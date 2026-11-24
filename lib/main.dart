@@ -1,15 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
-const String kBaseBlogUrl = 'https://anataleb-eg.blogspot.com';
+const String kMainBlogUrl = 'https://hrinnf.blogspot.com';
+const String kLibraryBlogUrl = 'https://mktptfany.blogspot.com/?m=1';
+const String kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=com.pro.ap4016842.skn';
+const String kLogoUrl = 'https://i.ibb.co/Jw1QZDcF/Picsart-26-11-22-15-43-13-999.png';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const FaniProApp());
 }
 
@@ -19,7 +25,7 @@ class FaniProApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'تطبيق فني برو',
+      title: 'تطبيق فني برو 2027',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -42,23 +48,26 @@ class MainHomeScreen extends StatefulWidget {
 class _MainHomeScreenState extends State<MainHomeScreen> {
   AppStage _currentStage = AppStage.diploma;
   bool _isSalawatMode = false;
+  bool _hasUnreadNotif = true;
   Timer? _tickerTimer;
   Timer? _mascotTimer;
 
-  // حالة المرشد الصوتي
+  // المرشد الصوتي
   final FlutterTts _flutterTts = FlutterTts();
   bool _showMascotToast = false;
   String _mascotTitle = '';
   String _mascotSpeech = '';
 
-  // تخزين عدادات المشاهدات
+  // عدادات المشاهدات وإحصائيات الشات
   Map<String, int> _viewsMap = {};
+  int _chatMembers = 128;
+  int _chatMessages = 342;
 
   @override
   void initState() {
     super.initState();
     _initTts();
-    _loadSavedStageAndViews();
+    _loadSavedData();
     _startSalawatRotation();
   }
 
@@ -67,9 +76,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     await _flutterTts.setSpeechRate(0.5);
   }
 
-  Future<void> _loadSavedStageAndViews() async {
+  Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     final savedStage = prefs.getString('fanni_stage_v6');
+    final notifRead = prefs.getBool('fanni_notif_read_v1') ?? false;
 
     if (savedStage == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showStageOnboardingDialog());
@@ -82,15 +92,19 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       });
     }
 
-    // تحميل العدادات
-    final keys = prefs.getKeys();
     final loadedViews = <String, int>{};
-    for (var k in keys) {
+    for (var k in prefs.getKeys()) {
       if (k.startsWith('view_')) {
         loadedViews[k] = prefs.getInt(k) ?? 0;
       }
     }
-    setState(() => _viewsMap = loadedViews);
+
+    setState(() {
+      _hasUnreadNotif = !notifRead;
+      _viewsMap = loadedViews;
+      _chatMembers = prefs.getInt('chat_members_count') ?? 128;
+      _chatMessages = prefs.getInt('chat_messages_count') ?? 342;
+    });
   }
 
   Future<void> _selectStage(AppStage stage) async {
@@ -110,7 +124,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     });
   }
 
-  // ألوان كل مرحلة
   Color get _primaryColor {
     switch (_currentStage) {
       case AppStage.diploma:
@@ -155,7 +168,13 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     }
   }
 
-  Future<void> _incrementAndOpen(String viewId, int baseViews, String title, String url, {bool requireTeacherConfirm = false}) async {
+  Future<void> _incrementAndOpen(
+    String viewId,
+    int baseViews,
+    String title,
+    String url, {
+    bool requireTeacherConfirm = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final current = (_viewsMap[viewId] ?? baseViews) + 1;
     await prefs.setInt(viewId, current);
@@ -173,7 +192,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               children: [
                 Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
                 SizedBox(width: 8),
-                Text('تنبيه هام قبل الدخول', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text('تنبيه هام قبل الدخول', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
               ],
             ),
             content: const Text(
@@ -201,7 +220,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BlogWebViewScreen(title: title, url: url, themeColor: _primaryDarkColor),
+        builder: (_) => BlogWebViewScreen(
+          title: title,
+          url: url,
+          primaryColor: _primaryColor,
+          primaryDarkColor: _primaryDarkColor,
+        ),
       ),
     );
   }
@@ -220,7 +244,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       _showMascotToast = true;
     });
     await _flutterTts.speak(speech);
-    _mascotTimer = Timer(const Duration(seconds: 12), () {
+    _mascotTimer = Timer(const Duration(seconds: 13), () {
       if (mounted) setState(() => _showMascotToast = false);
     });
   }
@@ -262,7 +286,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         if (_currentStage == AppStage.naql) ..._buildNaqlStageContent(),
                         if (_currentStage == AppStage.institutes) ..._buildInstitutesStageContent(),
 
-                        // قسم المدرسين والمعلنين (للدبلومات وصفوف النقل)
+                        // قسم المدرس المعتمد والمعلنين (الدبلومات وصفوف النقل)
                         if (_currentStage != AppStage.institutes) ...[
                           const SizedBox(height: 16),
                           _buildSectionHead(
@@ -279,17 +303,16 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   title: 'انضم إلينا كمدرس معتمد 👨‍🏫',
                                   tag: 'للمدرسين فقط',
                                   tagColor: const Color(0xFFD97706),
-                                  bannerGradient: const [Color(0xFFD97706), Color(0xFFB45309)],
-                                  bannerIcon: Icons.person_add_alt_1_rounded,
+                                  bannerImageUrl: 'https://i.ibb.co/DPn2MJX8/1780144482753.png',
                                   viewsText: 'انشر مجاناً',
                                   actionText: 'دخول',
                                   actionColor: const Color(0xFFD97706),
                                   isDashedBorder: true,
                                   onTap: () => _incrementAndOpen(
                                     'view_teacher_join_v2',
-                                    1200,
+                                    1500,
                                     'المدرس المعتمد',
-                                    '$kBaseBlogUrl/search/label/المدرسين',
+                                    '$kMainBlogUrl/search/label/المدرسين',
                                     requireTeacherConfirm: true,
                                   ),
                                 ),
@@ -300,16 +323,15 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                                   title: 'أعلن على تطبيقنا الآن',
                                   tag: 'للمعلنين',
                                   tagColor: const Color(0xFF4F46E5),
-                                  bannerGradient: const [Color(0xFF4F46E5), Color(0xFF3730A3)],
-                                  bannerIcon: Icons.campaign_rounded,
+                                  bannerImageUrl: 'https://i.ibb.co/5hps1pnN/1780145508147.png',
                                   viewsText: 'عروض مميزة',
                                   actionText: 'التفاصيل',
                                   actionColor: const Color(0xFF4F46E5),
                                   onTap: () => _incrementAndOpen(
                                     'view_ads_app_v2',
-                                    980,
-                                    'أعلن معنا',
-                                    '$kBaseBlogUrl/search/label/الاعلانات',
+                                    1100,
+                                    'أعلن على تطبيقنا',
+                                    '$kMainBlogUrl/search/label/الاعلانات',
                                     requireTeacherConfirm: true,
                                   ),
                                 ),
@@ -318,13 +340,13 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           ),
                         ],
 
-                        // خدمات الوزارة + شات الطلاب (للدبلومات فقط)
+                        // خدمات الوزارة وشات الطلاب المباشر (للدبلومات)
                         if (_currentStage == AppStage.diploma) ...[
                           const SizedBox(height: 16),
                           _buildSectionHead(
                             title: 'خدمات الوزارة للطلاب 2027',
                             icon: Icons.account_balance_rounded,
-                            gradient: [ _primaryColor, _primaryDarkColor ],
+                            gradient: [_primaryColor, _primaryDarkColor],
                             speech: 'هنا البوابة الرسمية لوزارة التربية والتعليم المصرية لمتابعة القرارات الرسمية والاستمارات والخدمات الوزارية مباشرة.',
                           ),
                           const SizedBox(height: 8),
@@ -364,9 +386,18 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const CircleAvatar(
-                        backgroundColor: Color(0xFFF59E0B),
-                        child: Text('👨‍🎓', style: TextStyle(fontSize: 20)),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          'https://i.ibb.co/GvxnqHr2/Picsart-26-11-13-00-23-59-671.png',
+                          width: 38,
+                          height: 38,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const CircleAvatar(
+                            backgroundColor: Color(0xFFF59E0B),
+                            child: Text('👨‍🎓', style: TextStyle(fontSize: 18)),
+                          ),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -375,12 +406,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           children: [
                             Text(
                               _mascotTitle,
-                              style: const TextStyle(color: Color(0xFFFDE047), fontSize: 12, fontWeight: FontWeight.bold),
+                              style: const TextStyle(color: Color(0xFFFDE047), fontSize: 11.5, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               _mascotSpeech,
-                              style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.4),
+                              style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.45),
                             ),
                           ],
                         ),
@@ -396,7 +427,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
 
-            // شريط التنقل السفلي العائم مع زر شنطة الأدوات
+            // شريط التنقل السفلي العائم
             Positioned(
               bottom: 10,
               left: 12,
@@ -435,14 +466,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           Container(
             width: 34,
             height: 34,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                'https://i.ibb.co/Jw1QZDcF/Picsart-26-11-22-15-43-13-999.png',
+                kLogoUrl,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Center(
                   child: Text('ف', style: TextStyle(color: _primaryDarkColor, fontWeight: FontWeight.w900, fontSize: 18)),
@@ -487,9 +515,31 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             ),
           ),
           const SizedBox(width: 6),
-          _headerIconBtn(Icons.notifications_rounded, () {
-            _showSimpleMessage('إشعارات فني برو', 'أهلاً بك في النسخة التجريبية الأصلية المربوطة بمدونة أنا طالب!');
-          }),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _headerIconBtn(Icons.notifications_rounded, () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('fanni_notif_read_v1', true);
+                setState(() => _hasUnreadNotif = false);
+                _openNotificationsDialog();
+              }),
+              if (_hasUnreadNotif)
+                Positioned(
+                  top: -3,
+                  right: -3,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(50),
+                      border: Border.all(color: _primaryColor, width: 1.5),
+                    ),
+                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -502,10 +552,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       child: Container(
         width: 36,
         height: 36,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.18),
-          borderRadius: BorderRadius.circular(9),
-        ),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(9)),
         child: Icon(icon, color: Colors.white, size: 18),
       ),
     );
@@ -516,7 +563,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     return InkWell(
       onTap: _isSalawatMode
           ? null
-          : () => _incrementAndOpen('view_faneer', 50000, 'مساعد فنير', '$kBaseBlogUrl/search/label/مساعد%20فنير'),
+          : () => _incrementAndOpen('view_faneer', 50000, 'مساعد فنير الدراسي', '$kMainBlogUrl/search/label/مساعد%20فنير'),
       child: Container(
         height: 32,
         decoration: BoxDecoration(
@@ -526,7 +573,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 : [const Color(0xFF1E1B4B), const Color(0xFF312E81), const Color(0xFF1E1B4B)],
           ),
           border: Border(
-            bottom: BorderSide(color: _isSalawatMode ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B).withOpacity(0.5), width: 1.5),
+            bottom: BorderSide(
+              color: _isSalawatMode ? const Color(0xFFFBBF24) : const Color(0xFFF59E0B).withOpacity(0.5),
+              width: 1.5,
+            ),
           ),
         ),
         child: _isSalawatMode
@@ -590,7 +640,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               actionText: 'تصفح',
               actionColor: const Color(0xFF059669),
               isFeatured: true,
-              onTap: () => _incrementAndOpen('view_memo_2027_v2', 86400, 'مكتبة المذكرات', '$kBaseBlogUrl/search/label/المذكرات'),
+              onTap: () => _incrementAndOpen('view_memo_2027_v2', 86400, 'مكتبة المذكرات والمراجعات', kLibraryBlogUrl),
             ),
           ),
           const SizedBox(width: 10),
@@ -604,7 +654,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               actionText: 'شاهد',
               actionColor: const Color(0xFFD97706),
               isFeatured: true,
-              onTap: () => _incrementAndOpen('view_lessons_2027_v2', 74200, 'شروحات المناهج', '$kBaseBlogUrl/search/label/الشروحات'),
+              onTap: () => _incrementAndOpen('view_lessons_2027_v2', 74200, 'شروحات المناهج والدروس', '$kMainBlogUrl/search/label/الشروحات'),
             ),
           ),
         ],
@@ -628,7 +678,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_exams_2027_v2', 68900),
               actionText: 'تدرّب',
               actionColor: const Color(0xFF4F46E5),
-              onTap: () => _incrementAndOpen('view_exams_2027_v2', 68900, 'بنك الاختبارات', '$kBaseBlogUrl/search/label/الاختبارات'),
+              onTap: () => _incrementAndOpen('view_exams_2027_v2', 68900, 'بنك الاختبارات النهائية', '$kMainBlogUrl/search/label/الاختبارات'),
             ),
           ),
           const SizedBox(width: 10),
@@ -640,7 +690,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_quiz_2027_v2', 52600),
               actionText: 'ابدأ',
               actionColor: const Color(0xFFD97706),
-              onTap: () => _incrementAndOpen('view_quiz_2027_v2', 52600, 'اختبر ذكائك', '$kBaseBlogUrl/search/label/اختبر%20ذكائك'),
+              onTap: () => _incrementAndOpen('view_quiz_2027_v2', 52600, 'اختبر ذكائك', '$kMainBlogUrl/search/label/اختبر%20ذكائك'),
             ),
           ),
         ],
@@ -660,7 +710,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               actionText: 'العب الآن',
               actionColor: const Color(0xFF7C3AED),
               isFeatured: true,
-              onTap: () => _incrementAndOpen('view_game_tafawok_v1', 41200, 'تحدي التفوق', '$kBaseBlogUrl/search/label/تحدي%20التفوق'),
+              onTap: () => _incrementAndOpen('view_game_tafawok_v1', 41200, 'تحدي التفوق والامتحانات', '$kMainBlogUrl/search/label/تحدي%20التفوق'),
             ),
           ),
           const SizedBox(width: 10),
@@ -675,7 +725,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               actionText: 'ادخل اللجنة',
               actionColor: const Color(0xFFD97706),
               isFeatured: true,
-              onTap: () => _incrementAndOpen('view_game_million_v1', 38900, 'من سينجح', '$kBaseBlogUrl/search/label/من%20سينجح'),
+              onTap: () => _incrementAndOpen('view_game_million_v1', 38900, 'من سينجح في امتحانات الدبلوم', '$kMainBlogUrl/search/label/من%20سينجح'),
             ),
           ),
         ],
@@ -699,7 +749,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_results_2027_v2', 94800),
               actionText: 'استعلم',
               actionColor: const Color(0xFF059669),
-              onTap: () => _incrementAndOpen('view_results_2027_v2', 94800, 'نتائج الامتحانات', '$kBaseBlogUrl/search/label/النتائج'),
+              onTap: () => _incrementAndOpen('view_results_2027_v2', 94800, 'نتائج الامتحانات 2027', '$kMainBlogUrl/search/label/النتائج'),
             ),
           ),
           const SizedBox(width: 10),
@@ -711,7 +761,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_calc_2027_v2', 81500),
               actionText: 'احسب',
               actionColor: const Color(0xFF0891B2),
-              onTap: () => _incrementAndOpen('view_calc_2027_v2', 81500, 'حساب النسبة', '$kBaseBlogUrl/search/label/حساب%20النسبة'),
+              onTap: () => _incrementAndOpen('view_calc_2027_v2', 81500, 'حساب النسبة المئوية', '$kMainBlogUrl/search/label/حساب%20النسبة'),
             ),
           ),
         ],
@@ -735,7 +785,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_coord_2027_v2', 76900),
               actionText: 'سجّل الآن',
               actionColor: const Color(0xFF0284C7),
-              onTap: () => _incrementAndOpen('view_coord_2027_v2', 76900, 'التنسيق الإلكتروني', '$kBaseBlogUrl/search/label/التنسيق'),
+              onTap: () => _incrementAndOpen('view_coord_2027_v2', 76900, 'التنسيق الإلكتروني 2027', '$kMainBlogUrl/search/label/التنسيق'),
             ),
           ),
           const SizedBox(width: 10),
@@ -748,7 +798,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_eq_2027_v2', 63400),
               actionText: 'استكشف',
               actionColor: const Color(0xFFDC2626),
-              onTap: () => _incrementAndOpen('view_eq_2027_v2', 63400, 'المعادلات والكليات', '$kBaseBlogUrl/search/label/المعادلات'),
+              onTap: () => _incrementAndOpen('view_eq_2027_v2', 63400, 'المعاهد والكليات والمعادلات', '$kMainBlogUrl/search/label/المعادلات'),
             ),
           ),
         ],
@@ -769,7 +819,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         viewsText: _formatViews('view_advise_diploma_v2', 49300),
         actionText: 'شارك الآن',
         actionColor: const Color(0xFFBE185D),
-        onTap: () => _incrementAndOpen('view_advise_diploma_v2', 49300, 'انصح زميلك', '$kBaseBlogUrl/search/label/انصح%20زميلك'),
+        onTap: () => _incrementAndOpen('view_advise_diploma_v2', 49300, 'انصح زميلك', '$kMainBlogUrl/search/label/انصح%20زميلك'),
       ),
     ];
   }
@@ -794,11 +844,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         actionText: 'تصفح الآن',
         actionColor: const Color(0xFF059669),
         isFeatured: true,
-        onTap: () => _incrementAndOpen('view_naql_all_v2', 62400, 'مذكرات صفوف النقل', '$kBaseBlogUrl/search/label/صفوف%20النقل'),
+        onTap: () => _incrementAndOpen('view_naql_all_v2', 62400, 'مكتبة المذكرات لصفوف النقل', kLibraryBlogUrl),
       ),
       const SizedBox(height: 16),
       InkWell(
-        onTap: () => _incrementAndOpen('view_fb_official_v2', 35000, 'جروب الفيس بوك', '$kBaseBlogUrl/search/label/المنصات'),
+        onTap: () => _incrementAndOpen('view_fb_official_v2', 35000, 'مجتمعنا الرسمي', '$kMainBlogUrl/search/label/المنصات'),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(12),
@@ -856,7 +906,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             ),
             SizedBox(height: 4),
             Text(
-              'جهزنا لكم في هذا القسم أفضل الأدوات العملية لتنظيم السكاشن والمحاضرات وتدوين الملاحظات بكل احترافية.',
+              'جهزنا لكم في هذا القسم أفضل الأدوات العملية والهندسية لتنظيم السكاشن والمحاضرات والرسم الهندسي وتدوين الملاحظات بكل احترافية.',
               style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 11, height: 1.45),
             ),
           ],
@@ -867,11 +917,56 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         title: 'أدوات السكاشن والمحاضرات للمعاهد والكليات',
         icon: Icons.architecture_rounded,
         gradient: [_primaryColor, _primaryDarkColor],
-        speech: 'هنا أدواتك العملية في السكاشن: الآلة الحاسبة الفورية، غرفة التركيز بومودورو، وحماس المذاكرة اليومي.',
+        speech: 'هنا أدواتك العملية في السكاشن: لوحة الرسم الهندسي، كشكول السكاشن 10 ورقات، جدول المحاضرات والسكاشن، والآلة الحاسبة الفورية.',
       ),
       const SizedBox(height: 8),
       Row(
         children: [
+          Expanded(
+            child: _buildProCard(
+              title: 'لوحة الرسم الهندسي والاسكتشات 📐',
+              tag: 'سكاشن الرسم',
+              bannerGradient: const [Color(0xFF0369A1), Color(0xFF0EA5E9)],
+              bannerIcon: Icons.architecture_rounded,
+              viewsText: _formatViews('view_eng_pad_v2', 64600),
+              actionText: 'افتح',
+              actionColor: const Color(0xFF0284C7),
+              isFeatured: true,
+              onTap: _openEngineeringPadScreen,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _buildProCard(
+              title: 'كشكول السكاشن والمحاضرات (10 ورقات) 📝',
+              tag: 'كشكول السكاشن',
+              bannerGradient: const [Color(0xFF312E81), Color(0xFF4338CA)],
+              bannerIcon: Icons.menu_book_rounded,
+              viewsText: _formatViews('view_notebook_app_v2', 71200),
+              actionText: 'دوّن',
+              actionColor: const Color(0xFF4338CA),
+              isFeatured: true,
+              onTap: _openSpiralNotebookScreen,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: _buildProCard(
+              title: 'جدول السكاشن والمحاضرات الأسبوعي 📅',
+              tag: 'مواعيد السكاشن',
+              bannerGradient: const [Color(0xFF9D174D), Color(0xFFDB2777)],
+              bannerIcon: Icons.calendar_month_rounded,
+              viewsText: _formatViews('view_schedule_tool_v2', 57800),
+              actionText: 'نظّم',
+              actionColor: const Color(0xFFDB2777),
+              onTap: _openScheduleDialog,
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
               title: 'آلة حاسبة سريعة للسكاشن والمعامل 🧮',
@@ -881,22 +976,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               viewsText: _formatViews('view_calculator_tool_v2', 54300),
               actionText: 'احسب',
               actionColor: const Color(0xFF047857),
-              isFeatured: true,
               onTap: _openCalculatorDialog,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _buildProCard(
-              title: 'غرفة التركيز ومؤقت المذاكرة ⏱️',
-              tag: 'بومودورو',
-              bannerGradient: const [Color(0xFF312E81), Color(0xFF4338CA)],
-              bannerIcon: Icons.timer_rounded,
-              viewsText: _formatViews('view_focus_tool_v2', 61200),
-              actionText: 'ابدأ',
-              actionColor: const Color(0xFF4338CA),
-              isFeatured: true,
-              onTap: _openFocusTimerDialog,
             ),
           ),
         ],
@@ -910,7 +990,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         viewsText: _formatViews('view_advise_inst_v2', 48700),
         actionText: 'شارك الآن',
         actionColor: const Color(0xFFBE185D),
-        onTap: () => _incrementAndOpen('view_advise_inst_v2', 48700, 'مجتمع المعاهد', '$kBaseBlogUrl/search/label/انصح%20زميلك'),
+        onTap: () => _incrementAndOpen('view_advise_inst_v2', 48700, 'مجتمع المعاهد والكليات', '$kMainBlogUrl/search/label/انصح%20زميلك'),
       ),
     ];
   }
@@ -927,18 +1007,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         Container(
           width: 24,
           height: 24,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: gradient),
-            borderRadius: BorderRadius.circular(6),
-          ),
+          decoration: BoxDecoration(gradient: LinearGradient(colors: gradient), borderRadius: BorderRadius.circular(6)),
           child: Icon(icon, color: Colors.white, size: 13),
         ),
         const SizedBox(width: 7),
         Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF1E293B)),
-          ),
+          child: Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
         ),
         InkWell(
           onTap: () => _activateMascot(title, speech),
@@ -1006,7 +1080,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   if (bannerImageUrl != null)
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(12.5)),
-                      child: Image.network(bannerImageUrl, fit: BoxFit.cover),
+                      child: Image.network(
+                        bannerImageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: actionColor,
+                          child: const Icon(Icons.image_rounded, color: Colors.white, size: 28),
+                        ),
+                      ),
                     )
                   else
                     Center(
@@ -1120,7 +1201,16 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   Widget _buildStudentChatCard() {
     return InkWell(
-      onTap: () => _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب المباشر', '$kBaseBlogUrl/search/label/الشات'),
+      onTap: () async {
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _chatMembers += 1;
+          _chatMessages += 3;
+        });
+        await prefs.setInt('chat_members_count', _chatMembers);
+        await prefs.setInt('chat_messages_count', _chatMessages);
+        _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب المباشر', '$kMainBlogUrl/search/label/الشات');
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -1182,7 +1272,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('👥 128 عضو  •  💬 342 رسالة اليوم', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                Text('👥 $_chatMembers عضو  •  💬 $_chatMessages رسالة اليوم', style: const TextStyle(color: Colors.white70, fontSize: 10)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(50)),
@@ -1214,13 +1304,31 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _bottomNavItem(Icons.home_rounded, 'الرئيسية', true, () {}),
-              _bottomNavItem(Icons.rss_feed_rounded, 'تابع', false, () {
-                _incrementAndOpen('view_platforms', 20000, 'منصاتنا الرسمية', '$kBaseBlogUrl/search/label/المنصات');
-              }),
+              _bottomNavItem(
+                _currentStage == AppStage.institutes ? Icons.share_rounded : Icons.rss_feed_rounded,
+                _currentStage == AppStage.institutes ? 'مشاركة' : (_currentStage == AppStage.naql ? 'الجروب' : 'تابع'),
+                false,
+                () {
+                  if (_currentStage == AppStage.institutes) {
+                    _openShareDialog();
+                  } else {
+                    _incrementAndOpen('view_platforms', 20000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
+                  }
+                },
+              ),
               const SizedBox(width: 64),
-              _bottomNavItem(Icons.share_rounded, 'مشاركة', false, () {
-                _showSimpleMessage('مشاركة التطبيق', 'شارك تطبيق فني برو 2027 مع أصدقائك لتعم الفائدة 🎓');
-              }),
+              _bottomNavItem(
+                _currentStage == AppStage.institutes ? Icons.calendar_month_rounded : Icons.share_rounded,
+                _currentStage == AppStage.institutes ? 'السكاشن' : 'مشاركة',
+                false,
+                () {
+                  if (_currentStage == AppStage.institutes) {
+                    _openScheduleDialog();
+                  } else {
+                    _openShareDialog();
+                  }
+                },
+              ),
               _bottomNavItem(Icons.repeat_rounded, 'المرحلة', false, _showStageOnboardingDialog),
             ],
           ),
@@ -1264,11 +1372,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           Icon(icon, size: 19, color: isActive ? _primaryColor : const Color(0xFF64748B)),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: isActive ? _primaryColor : const Color(0xFF64748B),
-            ),
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: isActive ? _primaryColor : const Color(0xFF64748B)),
           ),
         ],
       ),
@@ -1283,16 +1387,20 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         children: [
           Container(
             padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, bottom: 14, left: 12, right: 12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [_primaryColor, _primaryDarkColor]),
-            ),
+            decoration: BoxDecoration(gradient: LinearGradient(colors: [_primaryColor, _primaryDarkColor])),
             child: Column(
               children: [
                 Row(
                   children: [
-                    _drawerPillBtn('من نحن', () => _incrementAndOpen('v_about', 1000, 'من نحن', '$kBaseBlogUrl/search/label/من%20نحن')),
+                    _drawerPillBtn('من نحن', () {
+                      Navigator.pop(context);
+                      _incrementAndOpen('v_about', 1000, 'من نحن', '$kMainBlogUrl/search/label/من%20نحن');
+                    }),
                     const SizedBox(width: 6),
-                    _drawerPillBtn('الخصوصية', () => _incrementAndOpen('v_priv', 1000, 'سياسة الخصوصية', '$kBaseBlogUrl/search/label/سياسة%20الخصوصية')),
+                    _drawerPillBtn('سياسة الخصوصية', () {
+                      Navigator.pop(context);
+                      _incrementAndOpen('v_priv', 1000, 'سياسة الخصوصية', '$kMainBlogUrl/search/label/سياسة%20الخصوصية');
+                    }),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -1302,7 +1410,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                      child: Center(child: Text('ف', style: TextStyle(color: _primaryDarkColor, fontWeight: FontWeight.w900, fontSize: 20))),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(kLogoUrl, fit: BoxFit.cover),
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1310,7 +1421,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(_stageBadgeText, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                          const Text('تطبيق فني برو 2027', style: TextStyle(color: Colors.white70, fontSize: 10.5)),
+                          const Text('التطبيق الأول للتعليم الفني في مصر', style: TextStyle(color: Colors.white70, fontSize: 10)),
                         ],
                       ),
                     ),
@@ -1328,25 +1439,83 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   Navigator.pop(context);
                   _showStageOnboardingDialog();
                 }),
-                _drawerTile(Icons.book_rounded, 'مكتبة المذكرات 2027', () {
+                if (_currentStage == AppStage.diploma) ...[
+                  _drawerTile(Icons.book_rounded, 'مكتبة المذكرات والمراجعات 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_memo_2027_v2', 86400, 'مكتبة المذكرات', kLibraryBlogUrl);
+                  }),
+                  _drawerTile(Icons.ondemand_video_rounded, 'شروحات المناهج والدروس 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_lessons_2027_v2', 74200, 'شروحات المناهج', '$kMainBlogUrl/search/label/الشروحات');
+                  }),
+                  _drawerTile(Icons.assignment_turned_in_rounded, 'بنك الاختبارات النهائية 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_exams_2027_v2', 68900, 'بنك الاختبارات', '$kMainBlogUrl/search/label/الاختبارات');
+                  }),
+                  _drawerTile(Icons.fact_check_rounded, 'خدمات نتائج الإمتحانات 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_results_2027_v2', 94800, 'نتائج الامتحانات', '$kMainBlogUrl/search/label/النتائج');
+                  }),
+                  _drawerTile(Icons.school_rounded, 'خدمات معادلات الكليات 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_eq_2027_v2', 63400, 'المعادلات والكليات', '$kMainBlogUrl/search/label/المعادلات');
+                  }),
+                  _drawerTile(Icons.computer_rounded, 'خدمات التنسيق الإلكتروني 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_coord_2027_v2', 76900, 'التنسيق الإلكتروني', '$kMainBlogUrl/search/label/التنسيق');
+                  }),
+                  _drawerTile(Icons.smart_toy_rounded, 'مساعد فنير الدراسي 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_faneer', 50000, 'مساعد فنير', '$kMainBlogUrl/search/label/مساعد%20فنير');
+                  }),
+                  _drawerTile(Icons.forum_rounded, 'شات الطلاب المباشر', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب', '$kMainBlogUrl/search/label/الشات');
+                  }),
+                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة)', () {
+                    Navigator.pop(context);
+                    _openUnifiedToolboxDialog();
+                  }),
+                ],
+                if (_currentStage == AppStage.naql) ...[
+                  _drawerTile(Icons.book_rounded, 'مكتبة المذكرات والمراجعات 2027', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_naql_all_v2', 62400, 'مذكرات صفوف النقل', kLibraryBlogUrl);
+                  }),
+                  _drawerTile(Icons.facebook_rounded, 'تابع جروب الفيس بوك الرسمي', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_fb_official_v2', 35000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
+                  }),
+                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة)', () {
+                    Navigator.pop(context);
+                    _openUnifiedToolboxDialog();
+                  }),
+                ],
+                if (_currentStage == AppStage.institutes) ...[
+                  _drawerTile(Icons.menu_book_rounded, 'كشكول السكاشن (10 أوراق)', () {
+                    Navigator.pop(context);
+                    _openSpiralNotebookScreen();
+                  }),
+                  _drawerTile(Icons.architecture_rounded, 'لوحة الرسم الهندسي (5 لوحات)', () {
+                    Navigator.pop(context);
+                    _openEngineeringPadScreen();
+                  }),
+                  _drawerTile(Icons.calendar_month_rounded, 'جدول السكاشن والمحاضرات', () {
+                    Navigator.pop(context);
+                    _openScheduleDialog();
+                  }),
+                  _drawerTile(Icons.calculate_rounded, 'الآلة الحاسبة الذكية', () {
+                    Navigator.pop(context);
+                    _openCalculatorDialog();
+                  }),
+                  _drawerTile(Icons.timer_rounded, 'غرفة التركيز (بومودورو)', () {
+                    Navigator.pop(context);
+                    _openFocusTimerDialog();
+                  }),
+                ],
+                _drawerTile(Icons.share_rounded, 'مشاركة التطبيق', () {
                   Navigator.pop(context);
-                  _incrementAndOpen('view_memo_2027_v2', 86400, 'مكتبة المذكرات', '$kBaseBlogUrl/search/label/المذكرات');
-                }),
-                _drawerTile(Icons.ondemand_video_rounded, 'شروحات المناهج 2027', () {
-                  Navigator.pop(context);
-                  _incrementAndOpen('view_lessons_2027_v2', 74200, 'شروحات المناهج', '$kBaseBlogUrl/search/label/الشروحات');
-                }),
-                _drawerTile(Icons.assignment_turned_in_rounded, 'بنك الاختبارات 2027', () {
-                  Navigator.pop(context);
-                  _incrementAndOpen('view_exams_2027_v2', 68900, 'بنك الاختبارات', '$kBaseBlogUrl/search/label/الاختبارات');
-                }),
-                _drawerTile(Icons.smart_toy_rounded, 'مساعد فنير الدراسي', () {
-                  Navigator.pop(context);
-                  _incrementAndOpen('view_faneer', 50000, 'مساعد فنير', '$kBaseBlogUrl/search/label/مساعد%20فنير');
-                }),
-                _drawerTile(Icons.work_rounded, 'شنطة الأدوات الذكية', () {
-                  Navigator.pop(context);
-                  _openUnifiedToolboxDialog();
+                  _openShareDialog();
                 }),
               ],
             ),
@@ -1391,7 +1560,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 8. نوافذ التفاعل (اختيار المرحلة + شنطة الأدوات + الحاسبة + التركيز) =================
+  // ================= 8. نوافذ اختيار المرحلة والشنطة الموحدة =================
   void _showStageOnboardingDialog() {
     showDialog(
       context: context,
@@ -1405,6 +1574,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.network(kLogoUrl, width: 64, height: 64, fit: BoxFit.cover),
+                ),
+                const SizedBox(height: 8),
                 const Text('أهلاً بك في تطبيق فني برو 🎓', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 4),
                 const Text('اختر مرحلتك الدراسية للدخول مباشرة إلى قسمك', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
@@ -1494,58 +1668,303 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Row(
-            children: [
-              Icon(Icons.work_rounded, color: _primaryColor),
-              const SizedBox(width: 8),
-              const Text('شنطة أدوات فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFF047857), child: Icon(Icons.calculate, color: Colors.white)),
-                title: const Text('الآلة الحاسبة الذكية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                subtitle: const Text('حساب فوري سريع أوفلاين', style: TextStyle(fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openCalculatorDialog();
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFF10B981), child: Icon(Icons.timer, color: Colors.white)),
-                title: const Text('غرفة التركيز (بومودورو)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                subtitle: const Text('مؤقت 25 دقيقة مذاكرة', style: TextStyle(fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openFocusTimerDialog();
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(backgroundColor: Color(0xFFDC2626), child: Icon(Icons.local_fire_department, color: Colors.white)),
-                title: const Text('حماس المذاكرة اليومي 🔥', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                subtitle: const Text('جرعة تحفيز يومية', style: TextStyle(fontSize: 11)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  final quotes = [
-                    '🔥 اصنع من تعبك اليوم قصة نجاح ترويها غداً في كليتك!',
-                    '💪 لا توجد صعوبة أمام إرادة طالب فني يطمح للقمة.',
-                    '🎯 كل ساعة مذاكرة تقربك خطوة نحو مستقبلك الكبير.',
-                    '🚀 استعن بالله ولا تعجز.. القمة تنتظرك.',
-                  ];
-                  _showSimpleMessage('شحن طاقة وحماس المذاكرة 🚀', quotes[Random().nextInt(quotes.length)]);
-                },
-              ),
-            ],
+        child: Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.work_rounded, color: _primaryColor, size: 20),
+                        const SizedBox(width: 6),
+                        Text(
+                          _currentStage == AppStage.institutes ? 'أدوات السكاشن والمحاضرات' : 'شنطة أدوات فني برو',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _primaryColor),
+                        ),
+                      ],
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                  ],
+                ),
+                const Divider(),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 1.35,
+                  children: [
+                    _toolboxGridTile(
+                      icon: Icons.menu_book_rounded,
+                      color: const Color(0xFF4338CA),
+                      title: 'كشكول السلك 📝',
+                      sub: '10 ورقات كتابة ورسم',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openSpiralNotebookScreen();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.architecture_rounded,
+                      color: const Color(0xFF0284C7),
+                      title: 'الرسم الهندسي 📐',
+                      sub: 'شبكة وأدوات هندسية',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openEngineeringPadScreen();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.calendar_month_rounded,
+                      color: const Color(0xFFDB2777),
+                      title: 'جدول المواعيد 📅',
+                      sub: 'تنظيم دروسك وسكاشنك',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openScheduleDialog();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.calculate_rounded,
+                      color: const Color(0xFF047857),
+                      title: 'الآلة الحاسبة 🧮',
+                      sub: 'حساب فوري سريع',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openCalculatorDialog();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.timer_rounded,
+                      color: const Color(0xFF10B981),
+                      title: 'غرفة التركيز ⏱️',
+                      sub: 'مؤقت بومودورو 25 د',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openFocusTimerDialog();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.auto_awesome_rounded,
+                      color: const Color(0xFF0891B2),
+                      title: 'توقع نتيجتك 🎯',
+                      sub: 'قياس مستواك للدور الأول',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openPredictorDialog();
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.smart_toy_rounded,
+                      color: const Color(0xFF0E3A50),
+                      title: 'مساعد فنير 🤖',
+                      sub: 'مساعدك الدراسي الذكي',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _incrementAndOpen('view_faneer', 50000, 'مساعد فنير', '$kMainBlogUrl/search/label/مساعد%20فنير');
+                      },
+                    ),
+                    _toolboxGridTile(
+                      icon: Icons.local_fire_department_rounded,
+                      color: const Color(0xFFDC2626),
+                      title: 'حماس المذاكرة 🔥',
+                      sub: 'جرعة تحفيز يومية',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _openHamasDialog();
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  Widget _toolboxGridTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String sub,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: Colors.white, size: 17),
+            ),
+            const SizedBox(height: 5),
+            Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // فتح شاشة كشكول السلك (10 ورقات)
+  void _openSpiralNotebookScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SpiralNotebookScreen(themeColor: _primaryDarkColor),
+      ),
+    );
+  }
+
+  // فتح شاشة كراسة الرسم الهندسي (5 لوحات)
+  void _openEngineeringPadScreen() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EngineeringPadScreen(themeColor: _primaryDarkColor),
+      ),
+    );
+  }
+
+  // جدول المواعيد والسكاشن المحفوظ
+  void _openScheduleDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('fanni_schedule_2027');
+    List> items = raw != null ? List>.from(jsonDecode(raw)) : [];
+
+    final subjectCtrl = TextEditingController();
+    final timeCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    String selectedDay = 'السبت';
+    final days = ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'];
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Row(
+              children: [
+                Icon(Icons.calendar_month_rounded, color: Color(0xFFDB2777)),
+                SizedBox(width: 6),
+                Text('جدول دروسي وسكاشني', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: subjectCtrl,
+                      decoration: const InputDecoration(labelText: 'اسم المادة أو السكشن', border: OutlineInputBorder(), isDense: true),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedDay,
+                            decoration: const InputDecoration(labelText: 'اليوم', border: OutlineInputBorder(), isDense: true),
+                            items: days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(),
+                            onChanged: (v) => setModalState(() => selectedDay = v!),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: timeCtrl,
+                            decoration: const InputDecoration(labelText: 'الساعة', hintText: '4:00 عصراً', border: OutlineInputBorder(), isDense: true),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: noteCtrl,
+                      decoration: const InputDecoration(labelText: 'المكان أو اسم المدرس / المعيد', border: OutlineInputBorder(), isDense: true),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDB2777), foregroundColor: Colors.white),
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: const Text('إضافة للجدول وحفظ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        onPressed: () async {
+                          if (subjectCtrl.text.trim().isEmpty) return;
+                          setModalState(() {
+                            items.insert(0, {
+                              'subject': subjectCtrl.text.trim(),
+                              'day': selectedDay,
+                              'time': timeCtrl.text.trim().isEmpty ? 'غير محدد' : timeCtrl.text.trim(),
+                              'note': noteCtrl.text.trim(),
+                            });
+                          });
+                          await prefs.setString('fanni_schedule_2027', jsonEncode(items));
+                          subjectCtrl.clear();
+                          timeCtrl.clear();
+                          noteCtrl.clear();
+                        },
+                      ),
+                    ),
+                    const Divider(height: 18),
+                    if (items.isEmpty)
+                      const Text('لا توجد مواعيد مضافة حالياً.', style: TextStyle(fontSize: 12, color: Colors.grey))
+                    else
+                      ...items.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final it = entry.value;
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          child: ListTile(
+                            dense: true,
+                            title: Text(it['subject'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                            subtitle: Text('${it['day']} | ${it['time']} ${it['note'].isNotEmpty ? '— ${it['note']}' : ''}', style: const TextStyle(fontSize: 11)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                              onPressed: () async {
+                                setModalState(() => items.removeAt(idx));
+                                await prefs.setString('fanni_schedule_2027', jsonEncode(items));
+                              },
+                            ),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // الآلة الحاسبة الذكية
   void _openCalculatorDialog() {
     String display = '0';
     String firstNum = '';
@@ -1573,7 +1992,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 if (op == '-') res = n1 - n2;
                 if (op == '×') res = n1 * n2;
                 if (op == '÷') res = n2 != 0 ? n1 / n2 : 0;
-                display = res % 1 == 0 ? res.toInt().toString() : res.toStringAsFixed(2);
+                display = res % 1 == 0 ? res.toInt().toString() : res.toStringAsFixed(3);
                 firstNum = '';
                 op = '';
               } else {
@@ -1632,6 +2051,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
+  // غرفة التركيز بومودورو
   void _openFocusTimerDialog() {
     int secondsLeft = 25 * 60;
     Timer? timer;
@@ -1652,7 +2072,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('نظام بومودورو: 25 دقيقة تركيز متواصل بدون تشتيت.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  const Text('نظام بومودورو: 25 دقيقة مذاكرة ثم 5 دقائق راحة.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
                   const SizedBox(height: 14),
                   Text('$m:$s', style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: _primaryColor)),
                   const SizedBox(height: 14),
@@ -1712,33 +2132,246 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  void _showSimpleMessage(String title, String body) {
+  // نافذة توقع النتيجة
+  void _openPredictorDialog() {
+    int ar = 4, en = 4, math = 4, prac = 5;
+    String? resTitle;
+    String? resDesc;
+    Color resColor = const Color(0xFF10B981);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Text('🎯 قياس وتوقع نتيجة الدور الأول', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _levelDropdown('اللغة العربية', ar, (v) => setModalState(() => ar = v)),
+                  _levelDropdown('اللغة الإنجليزية', en, (v) => setModalState(() => en = v)),
+                  _levelDropdown('الرياضيات التطبيقية', math, (v) => setModalState(() => math = v)),
+                  _levelDropdown('المواد العملية والورش', prac, (v) => setModalState(() => prac = v)),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: _primaryColor, foregroundColor: Colors.white),
+                      onPressed: () {
+                        final total = ar + en + math + prac;
+                        setModalState(() {
+                          if (total >= 17) {
+                            resTitle = '🌟 نتيجتك ستكون رائعة في الدور الأول!';
+                            resDesc = 'أداء ممتاز جداً ومستواك متقدم في كافة المواد النظرية والعملية.';
+                            resColor = const Color(0xFF059669);
+                          } else if (total >= 13) {
+                            resTitle = '⭐ نتيجتك متوسطة ومطمئنة';
+                            resDesc = 'أداؤك جيد جداً، وتحتاج لتركيز بسيط في بعض النقاط.';
+                            resColor = const Color(0xFF4F46E5);
+                          } else {
+                            resTitle = '⚠️ نتيجتك تحت المتوسط، ركز أكثر';
+                            resDesc = 'الوقت أمامك لدخول بنك الاختبارات والمذكرات ومضاعفة مجهودك!';
+                            resColor = const Color(0xFFDC2626);
+                          }
+                        });
+                      },
+                      child: const Text('احسب واكتشف نتيجتك الآن', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  if (resTitle != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
+                      child: Column(
+                        children: [
+                          Text(resTitle!, style: TextStyle(fontWeight: FontWeight.bold, color: resColor, fontSize: 13)),
+                          const SizedBox(height: 4),
+                          Text(resDesc!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _levelDropdown(String label, int val, ValueChanged<int> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DropdownButtonFormField<int>(
+        value: val,
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
+        items: const [
+          DropdownMenuItem(value: 5, child: Text('ممتاز (فوق 85%)', style: TextStyle(fontSize: 12))),
+          DropdownMenuItem(value: 4, child: Text('جيد جداً (75% - 85%)', style: TextStyle(fontSize: 12))),
+          DropdownMenuItem(value: 3, child: Text('جيد (60% - 74%)', style: TextStyle(fontSize: 12))),
+          DropdownMenuItem(value: 2, child: Text('مقبول / ضعيف', style: TextStyle(fontSize: 12))),
+        ],
+        onChanged: (v) => onChanged(v!),
+      ),
+    );
+  }
+
+  // حماس المذاكرة اليومي
+  void _openHamasDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    int count = (prefs.getInt('hamas_boost_count') ?? 0) + 1;
+    await prefs.setInt('hamas_boost_count', count);
+
+    final quotes = [
+      '🔥 اصنع من تعبك اليوم قصة نجاح ترويها غداً في كليتك!',
+      '💪 لا توجد صعوبة أمام إرادة طالب فني يطمح للقمة.',
+      '🎯 كل ساعة مذاكرة تقربك خطوة نحو مستقبلك الكبير.',
+      '🚀 استعن بالله ولا تعجز.. القمة تنتظرك.',
+    ];
+    String currentQuote = quotes[Random().nextInt(quotes.length)];
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Text('🔥 شحن طاقة وحماس المذاكرة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('🚀🔥', style: TextStyle(fontSize: 32)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
+                  child: Text(currentQuote, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+                const SizedBox(height: 8),
+                Text('عدد مرات شحن الحماس اليوم: $count مرة', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
+                  onPressed: () async {
+                    count++;
+                    await prefs.setInt('hamas_boost_count', count);
+                    setModalState(() => currentQuote = quotes[Random().nextInt(quotes.length)]);
+                  },
+                  child: const Text('أخذ جرعة حماس جديدة 💪', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openNotificationsDialog() {
     showDialog(
       context: context,
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          content: Text(body, style: const TextStyle(fontSize: 13, height: 1.5)),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('حسناً'))],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Row(
+            children: [
+              Icon(Icons.notifications_active_rounded, color: Color(0xFFF59E0B)),
+              SizedBox(width: 6),
+              Text('إشعارات فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('🎓 اختر مرحلتك الدراسية بسهولة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                subtitle: const Text('اضغط لتحديد مرحلتك (الدبلومات، صفوف النقل، أو المعاهد والكليات).', style: TextStyle(fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showStageOnboardingDialog();
+                },
+              ),
+              const Divider(),
+              ListTile(
+                title: const Text('👨‍🏫 عرض المدرسين المعتمدين', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                subtitle: const Text('انشر شروحاتك ومذكراتك للطلاب على تطبيق فني برو مجاناً!', style: TextStyle(fontSize: 11)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _incrementAndOpen('view_teacher_join_v2', 1500, 'المدرس المعتمد', '$kMainBlogUrl/search/label/المدرسين', requireTeacherConfirm: true);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openShareDialog() {
+    const shareText = 'حمل تطبيق فني برو 2027 🎓 التطبيق الأول للتعليم الفني في مصر: $kPlayStoreUrl';
+    showDialog(
+      context: context,
+      builder: (ctx) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text('مشاركة تطبيق فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'شارك التطبيق مع زمايلك في الدبلوم أو المعهد عشان الكل يستفيد من المذكرات والأدوات الهندسية 🎓',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: _primaryColor, foregroundColor: Colors.white),
+                  icon: const Icon(Icons.copy_rounded),
+                  label: const Text('نسخ رسالة ورابط التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: () {
+                    Clipboard.setData(const ClipboardData(text: shareText));
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('تم نسخ رسالة ورابط التطبيق بنجاح! ✅')),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ================= شاشة عرض صفحات المدونة الداخلية (WebView) =================
+// =========================================================================
+// 1. شاشة عرض صفحات المدونة بنفس الهيدر الأصلي وبدون أي شاشة سوداء
+// =========================================================================
 class BlogWebViewScreen extends StatefulWidget {
   final String title;
   final String url;
-  final Color themeColor;
+  final Color primaryColor;
+  final Color primaryDarkColor;
 
   const BlogWebViewScreen({
     super.key,
     required this.title,
     required this.url,
-    required this.themeColor,
+    required this.primaryColor,
+    required this.primaryDarkColor,
   });
 
   @override
@@ -1747,6 +2380,7 @@ class BlogWebViewScreen extends StatefulWidget {
 
 class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
   late final WebViewController _controller;
+  bool _isLoading = true;
   int _loadingProgress = 0;
 
   @override
@@ -1756,22 +2390,223 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
 
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFFF1F5F9))
       ..setNavigationDelegate(
         NavigationDelegate(
+          onPageStarted: (_) {
+            if (mounted) setState(() => _isLoading = true);
+          },
           onProgress: (progress) {
             if (mounted) setState(() => _loadingProgress = progress);
           },
           onPageFinished: (url) {
-            // حقن CSS لإخفاء قوائم المدونة العلوية والسفلية تلقائياً داخل التطبيق
             _controller.runJavaScript('''
               var style = document.createElement('style');
               style.innerHTML = 'header, nav, .fixed-action-bar, .floating-nav-wrap, .support-ticker-bar, footer { display: none !important; } body { padding-top: 8px !important; padding-bottom: 16px !important; }';
               document.head.appendChild(style);
             ''');
+            if (mounted) setState(() => _isLoading = false);
           },
         ),
       )
       ..loadRequest(targetUri);
+  }
+
+  Future<void> _handleBack() async {
+    if (await _controller.canGoBack()) {
+      _controller.goBack();
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleBack();
+      },
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF1F5F9),
+          body: Column(
+            children: [
+              // نفس الهيدر العلوي الأصلي للتطبيق باللوجو والأزرار
+              Container(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 6,
+                  bottom: 8,
+                  left: 10,
+                  right: 10,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [widget.primaryDarkColor, widget.primaryColor],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3))],
+                ),
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: _handleBack,
+                      borderRadius: BorderRadius.circular(9),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(9)),
+                        child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          kLogoUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Text('ف', style: TextStyle(color: widget.primaryDarkColor, fontWeight: FontWeight.w900, fontSize: 18)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'تطبيق فني برو',
+                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, height: 1.15),
+                          ),
+                          Text(
+                            widget.title,
+                            style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 10.5, fontWeight: FontWeight.w700),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => _controller.reload(),
+                      borderRadius: BorderRadius.circular(9),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(9)),
+                        child: const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (_isLoading)
+                LinearProgressIndicator(
+                  value: _loadingProgress > 0 ? _loadingProgress / 100.0 : null,
+                  minHeight: 3,
+                  backgroundColor: Colors.white24,
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
+                ),
+
+              Expanded(
+                child: Stack(
+                  children: [
+                    WebViewWidget(controller: _controller),
+                    if (_isLoading)
+                      Container(
+                        color: const Color(0xFFF1F5F9),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(color: widget.primaryColor),
+                              const SizedBox(height: 12),
+                              Text(
+                                'جاري فتح ${widget.title}...',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: widget.primaryDarkColor),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =========================================================================
+// 2. كشكول السلك الأصلي (10 ورقات - كتابة نصية + رسم حر وألوان وحفظ تلقائي)
+// =========================================================================
+class _StrokePath {
+  final List<Offset> points;
+  final Color color;
+  final double width;
+  _StrokePath(this.points, this.color, this.width);
+
+  Map<String, dynamic> toJson() => {
+        'points': points.map((p) => [p.dx, p.dy]).toList(),
+        'color': color.value,
+        'width': width,
+      };
+
+  factory _StrokePath.fromJson(Map<String, dynamic> j) => _StrokePath(
+        (j['points'] as List).map((e) => Offset((e[0] as num).toDouble(), (e[1] as num).toDouble())).toList(),
+        Color(j['color'] as int),
+        (j['width'] as num).toDouble(),
+      );
+}
+
+class SpiralNotebookScreen extends StatefulWidget {
+  final Color themeColor;
+  const SpiralNotebookScreen({super.key, required this.themeColor});
+
+  @override
+  State<SpiralNotebookScreen> createState() => _SpiralNotebookScreenState();
+}
+
+class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
+  int _pageIndex = 1;
+  bool _isDrawMode = false;
+  Color _penColor = const Color(0xFF1E293B);
+  final TextEditingController _textCtrl = TextEditingController();
+  List<_StrokePath> _strokes = [];
+  _StrokePath? _currentStroke;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPage();
+  }
+
+  Future<void> _loadPage() async {
+    final prefs = await SharedPreferences.getInstance();
+    _textCtrl.text = prefs.getString('nb_text_$_pageIndex') ?? '';
+    final rawStrokes = prefs.getString('nb_strokes_$_pageIndex');
+    setState(() {
+      _strokes = rawStrokes != null
+          ? (jsonDecode(rawStrokes) as List).map((e) => _StrokePath.fromJson(e)).toList()
+          : [];
+    });
+  }
+
+  Future<void> _savePage() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('nb_text_$_pageIndex', _textCtrl.text);
+    await prefs.setString('nb_strokes_$_pageIndex', jsonEncode(_strokes.map((s) => s.toJson()).toList()));
   }
 
   @override
@@ -1779,29 +2614,503 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
+        backgroundColor: const Color(0xFF111827),
         appBar: AppBar(
-          backgroundColor: widget.themeColor,
+          backgroundColor: const Color(0xFF1F2937),
           foregroundColor: Colors.white,
-          title: Text(widget.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          title: const Text('كشكول السلك الذكي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           actions: [
             IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: () => _controller.reload(),
+              icon: Icon(Icons.keyboard_rounded, color: !_isDrawMode ? const Color(0xFF38BDF8) : Colors.white70),
+              tooltip: 'كتابة',
+              onPressed: () => setState(() => _isDrawMode = false),
+            ),
+            IconButton(
+              icon: Icon(Icons.edit_rounded, color: _isDrawMode ? const Color(0xFF38BDF8) : Colors.white70),
+              tooltip: 'رسم بالقلم',
+              onPressed: () => setState(() => _isDrawMode = true),
+            ),
+            IconButton(
+              icon: const Icon(Icons.undo_rounded),
+              tooltip: 'تراجع عن خط',
+              onPressed: () {
+                if (_strokes.isNotEmpty) {
+                  setState(() => _strokes.removeLast());
+                  _savePage();
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              tooltip: 'مسح الورقة',
+              onPressed: () {
+                setState(() {
+                  _textCtrl.clear();
+                  _strokes.clear();
+                });
+                _savePage();
+              },
             ),
           ],
-          bottom: _loadingProgress < 100
-              ? PreferredSize(
-                  preferredSize: const Size.fromHeight(3),
-                  child: LinearProgressIndicator(
-                    value: _loadingProgress / 100.0,
-                    backgroundColor: Colors.white24,
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
-                  ),
-                )
-              : null,
         ),
-        body: WebViewWidget(controller: _controller),
+        body: Column(
+          children: [
+            // شريط الألوان في وضع الرسم
+            if (_isDrawMode)
+              Container(
+                color: const Color(0xFF1F2937),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Color(0xFF1E293B),
+                    const Color(0xFF2563EB),
+                    const Color(0xFFDC2626),
+                    const Color(0xFF059669),
+                  ].map((c) {
+                    return GestureDetector(
+                      onTap: () => setState(() => _penColor = c),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: c,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _penColor == c ? Colors.white : Colors.transparent, width: 2.5),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
+            // ورقة الكشكول المسطرة بحلقات السلك
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFDF7),
+                  borderRadius: BorderRadius.circular(12),
+                  border: const Border(left: BorderSide(color: Color(0xFF94A3B8), width: 4)),
+                ),
+                child: Row(
+                  children: [
+                    // حلقات السلك الجانبية
+                    Container(
+                      width: 22,
+                      color: const Color(0xFFE2E8F0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(
+                          14,
+                          (_) => Container(height: 6, width: 16, decoration: BoxDecoration(color: const Color(0xFF475569), borderRadius: BorderRadius.circular(3))),
+                        ),
+                      ),
+                    ),
+                    // مساحة الورقة المسطرة
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          CustomPaint(
+                            size: Size.infinite,
+                            painter: _NotebookLinesPainter(),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 42, 8),
+                            child: TextField(
+                              controller: _textCtrl,
+                              enabled: !_isDrawMode,
+                              maxLines: null,
+                              expands: true,
+                              onChanged: (_) => _savePage(),
+                              style: const TextStyle(fontSize: 15, height: 2.13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: 'اكتب ملخصاتك وملاحظاتك هنا... يتم الحفظ تلقائياً',
+                              ),
+                            ),
+                          ),
+                          IgnorePointer(
+                            ignoring: !_isDrawMode,
+                            child: GestureDetector(
+                              onPanStart: (d) {
+                                setState(() {
+                                  _currentStroke = _StrokePath([d.localPosition], _penColor, 2.5);
+                                  _strokes.add(_currentStroke!);
+                                });
+                              },
+                              onPanUpdate: (d) {
+                                setState(() => _currentStroke?.points.add(d.localPosition));
+                              },
+                              onPanEnd: (_) {
+                                _currentStroke = null;
+                                _savePage();
+                              },
+                              child: CustomPaint(
+                                size: Size.infinite,
+                                painter: _FreehandPainter(_strokes),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // شريط التنقل بين الـ 10 ورقات
+            Container(
+              color: const Color(0xFF1F2937),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _pageIndex > 1
+                        ? () async {
+                            await _savePage();
+                            setState(() => _pageIndex--);
+                            _loadPage();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    label: const Text('السابقة'),
+                  ),
+                  Text('ورقة $_pageIndex من 10', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ElevatedButton.icon(
+                    onPressed: _pageIndex < 10
+                        ? () async {
+                            await _savePage();
+                            setState(() => _pageIndex++);
+                            _loadPage();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    label: const Text('التالية'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _NotebookLinesPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()..color = const Color(0xFFCBD5E1)..strokeWidth = 1;
+    for (double y = 32; y < size.height; y += 32) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+    final marginPaint = Paint()..color = const Color(0xFFEF4444)..strokeWidth = 1.5;
+    canvas.drawLine(Offset(size.width - 34, 0), Offset(size.width - 34, size.height), marginPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _FreehandPainter extends CustomPainter {
+  final List<_StrokePath> strokes;
+  _FreehandPainter(this.strokes);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final s in strokes) {
+      if (s.points.length < 2) continue;
+      final paint = Paint()
+        ..color = s.color
+        ..strokeWidth = s.width
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+      final path = Path()..moveTo(s.points.first.dx, s.points.first.dy);
+      for (int i = 1; i < s.points.length; i++) {
+        path.lineTo(s.points[i].dx, s.points[i].dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+// =========================================================================
+// 3. لوحة الرسم الهندسي الأصلية (5 لوحات - خط، مستطيل، دائرة، رسم حر)
+// =========================================================================
+enum _EngShapeType { free, line, rect, circle }
+
+class _EngShapeItem {
+  final _EngShapeType type;
+  final List<Offset> points;
+  final Color color;
+  _EngShapeItem(this.type, this.points, this.color);
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'points': points.map((p) => [p.dx, p.dy]).toList(),
+        'color': color.value,
+      };
+
+  factory _EngShapeItem.fromJson(Map<String, dynamic> j) => _EngShapeItem(
+        _EngShapeType.values.firstWhere((e) => e.name == j['type']),
+        (j['points'] as List).map((e) => Offset((e[0] as num).toDouble(), (e[1] as num).toDouble())).toList(),
+        Color(j['color'] as int),
+      );
+}
+
+class EngineeringPadScreen extends StatefulWidget {
+  final Color themeColor;
+  const EngineeringPadScreen({super.key, required this.themeColor});
+
+  @override
+  State<EngineeringPadScreen> createState() => _EngineeringPadScreenState();
+}
+
+class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
+  int _sheetIndex = 1;
+  _EngShapeType _selectedTool = _EngShapeType.free;
+  Color _selectedColor = const Color(0xFF0F172A);
+  List<_EngShapeItem> _shapes = [];
+  _EngShapeItem? _activeShape;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSheet();
+  }
+
+  Future<void> _loadSheet() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('eng_sheet_$_sheetIndex');
+    setState(() {
+      _shapes = raw != null ? (jsonDecode(raw) as List).map((e) => _EngShapeItem.fromJson(e)).toList() : [];
+    });
+  }
+
+  Future<void> _saveSheet() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('eng_sheet_$_sheetIndex', jsonEncode(_shapes.map((s) => s.toJson()).toList()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF111827),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF1F2937),
+          foregroundColor: Colors.white,
+          title: const Text('لوحة الرسم الهندسي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          actions: [
+            _toolBtn(Icons.edit_rounded, _EngShapeType.free),
+            _toolBtn(Icons.horizontal_rule_rounded, _EngShapeType.line),
+            _toolBtn(Icons.crop_square_rounded, _EngShapeType.rect),
+            _toolBtn(Icons.circle_outlined, _EngShapeType.circle),
+            IconButton(
+              icon: const Icon(Icons.undo_rounded),
+              onPressed: () {
+                if (_shapes.isNotEmpty) {
+                  setState(() => _shapes.removeLast());
+                  _saveSheet();
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              onPressed: () {
+                setState(() => _shapes.clear());
+                _saveSheet();
+              },
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Container(
+              color: const Color(0xFF1F2937),
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Color(0xFF0F172A),
+                  const Color(0xFF0284C7),
+                  const Color(0xFFDC2626),
+                  const Color(0xFF16A34A),
+                ].map((c) {
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedColor = c),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 6),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: c,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _selectedColor == c ? Colors.white : Colors.transparent, width: 2.5),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFF0284C7), width: 2),
+                ),
+                child: Stack(
+                  children: [
+                    CustomPaint(size: Size.infinite, painter: _EngGridPainter()),
+                    GestureDetector(
+                      onPanStart: (d) {
+                        setState(() {
+                          _activeShape = _EngShapeItem(_selectedTool, [d.localPosition, d.localPosition], _selectedColor);
+                          _shapes.add(_activeShape!);
+                        });
+                      },
+                      onPanUpdate: (d) {
+                        setState(() {
+                          if (_selectedTool == _EngShapeType.free) {
+                            _activeShape?.points.add(d.localPosition);
+                          } else {
+                            _activeShape?.points[1] = d.localPosition;
+                          }
+                        });
+                      },
+                      onPanEnd: (_) {
+                        _activeShape = null;
+                        _saveSheet();
+                      },
+                      child: CustomPaint(
+                        size: Size.infinite,
+                        painter: _EngShapesPainter(_shapes),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          border: Border.all(color: const Color(0xFF0284C7)),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'كراسة الرسم الهندسي - مقياس 1:1 | فني برو 2027',
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              color: const Color(0xFF1F2937),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _sheetIndex > 1
+                        ? () async {
+                            await _saveSheet();
+                            setState(() => _sheetIndex--);
+                            _loadSheet();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    label: const Text('السابقة'),
+                  ),
+                  Text('لوحة هندسية $_sheetIndex من 5', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+                  ElevatedButton.icon(
+                    onPressed: _sheetIndex < 5
+                        ? () async {
+                            await _saveSheet();
+                            setState(() => _sheetIndex++);
+                            _loadSheet();
+                          }
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    label: const Text('التالية'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _toolBtn(IconData icon, _EngShapeType tool) {
+    final active = _selectedTool == tool;
+    return IconButton(
+      icon: Icon(icon, color: active ? const Color(0xFF38BDF8) : Colors.white70, size: 20),
+      onPressed: () => setState(() => _selectedTool = tool),
+    );
+  }
+}
+
+class _EngGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFF0EA5E9).withOpacity(0.22)..strokeWidth = 1;
+    for (double x = 0; x < size.width; x += 25) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y < size.height; y += 25) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _EngShapesPainter extends CustomPainter {
+  final List<_EngShapeItem> shapes;
+  _EngShapesPainter(this.shapes);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final s in shapes) {
+      if (s.points.length < 2) continue;
+      final paint = Paint()
+        ..color = s.color
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
+      if (s.type == _EngShapeType.free) {
+        final path = Path()..moveTo(s.points.first.dx, s.points.first.dy);
+        for (int i = 1; i < s.points.length; i++) {
+          path.lineTo(s.points[i].dx, s.points[i].dy);
+        }
+        canvas.drawPath(path, paint);
+      } else if (s.type == _EngShapeType.line) {
+        canvas.drawLine(s.points[0], s.points[1], paint);
+      } else if (s.type == _EngShapeType.rect) {
+        canvas.drawRect(Rect.fromPoints(s.points[0], s.points[1]), paint);
+      } else if (s.type == _EngShapeType.circle) {
+        final radius = (s.points[1] - s.points[0]).distance;
+        canvas.drawCircle(s.points[0], radius, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
