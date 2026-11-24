@@ -286,7 +286,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         if (_currentStage == AppStage.naql) ..._buildNaqlStageContent(),
                         if (_currentStage == AppStage.institutes) ..._buildInstitutesStageContent(),
 
-                        // قسم المدرس المعتمد والمعلنين (الدبلومات وصفوف النقل)
                         if (_currentStage != AppStage.institutes) ...[
                           const SizedBox(height: 16),
                           _buildSectionHead(
@@ -340,7 +339,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           ),
                         ],
 
-                        // خدمات الوزارة وشات الطلاب المباشر (للدبلومات)
                         if (_currentStage == AppStage.diploma) ...[
                           const SizedBox(height: 16),
                           _buildSectionHead(
@@ -369,7 +367,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ],
             ),
 
-            // نافذة المرشد الصوتي المنبثقة
             if (_showMascotToast)
               Positioned(
                 bottom: 86,
@@ -427,7 +424,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
 
-            // شريط التنقل السفلي العائم
             Positioned(
               bottom: 10,
               left: 12,
@@ -440,7 +436,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 1. الهيدر العلوي =================
   Widget _buildFixedHeader() {
     return Container(
       padding: EdgeInsets.only(
@@ -558,7 +553,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 2. الشريط المتحرك =================
   Widget _buildNewsTicker() {
     return InkWell(
       onTap: _isSalawatMode
@@ -618,7 +612,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 3. محتوى مرحلة الدبلومات =================
   List<Widget> _buildDiplomaStageContent() {
     return [
       _buildSectionHead(
@@ -824,7 +817,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     ];
   }
 
-  // ================= 4. محتوى مرحلة صفوف النقل =================
   List<Widget> _buildNaqlStageContent() {
     return [
       _buildSectionHead(
@@ -882,7 +874,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     ];
   }
 
-  // ================= 5. محتوى مرحلة المعاهد والكليات =================
   List<Widget> _buildInstitutesStageContent() {
     return [
       Container(
@@ -994,8 +985,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
     ];
   }
-
-  // ================= مكونات الواجهة المتكررة =================
   Widget _buildSectionHead({
     required String title,
     required IconData icon,
@@ -1286,7 +1275,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 6. الشريط السفلي العائم =================
   Widget _buildFloatingBottomNav() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -1379,7 +1367,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 7. القائمة الجانبية (Drawer) =================
   Widget _buildSideDrawer() {
     return Drawer(
       width: 270,
@@ -1560,7 +1547,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // ================= 8. نوافذ اختيار المرحلة والشنطة الموحدة =================
   void _showStageOnboardingDialog() {
     showDialog(
       context: context,
@@ -1824,7 +1810,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // فتح شاشة كشكول السلك (10 ورقات)
   void _openSpiralNotebookScreen() {
     Navigator.push(
       context,
@@ -1834,7 +1819,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // فتح شاشة كراسة الرسم الهندسي (5 لوحات)
   void _openEngineeringPadScreen() {
     Navigator.push(
       context,
@@ -1844,7 +1828,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // جدول المواعيد والسكاشن المحفوظ
   void _openScheduleDialog() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('fanni_schedule_2027');
@@ -1964,7 +1947,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // الآلة الحاسبة الذكية
   void _openCalculatorDialog() {
     String display = '0';
     String firstNum = '';
@@ -2051,7 +2033,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // غرفة التركيز بومودورو
   void _openFocusTimerDialog() {
     int secondsLeft = 25 * 60;
     Timer? timer;
@@ -2132,7 +2113,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // نافذة توقع النتيجة
   void _openPredictorDialog() {
     int ar = 4, en = 4, math = 4, prac = 5;
     String? resTitle;
@@ -2222,7 +2202,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     );
   }
 
-  // حماس المذاكرة اليومي
   void _openHamasDialog() async {
     final prefs = await SharedPreferences.getInstance();
     int count = (prefs.getInt('hamas_boost_count') ?? 0) + 1;
@@ -2357,9 +2336,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 }
 
-// =========================================================================
-// 1. شاشة عرض صفحات المدونة بنفس الهيدر الأصلي وبدون أي شاشة سوداء
-// =========================================================================
 class BlogWebViewScreen extends StatefulWidget {
   final String title;
   final String url;
@@ -2433,7 +2409,6 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
           backgroundColor: const Color(0xFFF1F5F9),
           body: Column(
             children: [
-              // نفس الهيدر العلوي الأصلي للتطبيق باللوجو والأزرار
               Container(
                 padding: EdgeInsets.only(
                   top: MediaQuery.of(context).padding.top + 6,
@@ -2507,7 +2482,6 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
                   ],
                 ),
               ),
-
               if (_isLoading)
                 LinearProgressIndicator(
                   value: _loadingProgress > 0 ? _loadingProgress / 100.0 : null,
@@ -2515,7 +2489,6 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
                   backgroundColor: Colors.white24,
                   valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFBBF24)),
                 ),
-
               Expanded(
                 child: Stack(
                   children: [
@@ -2548,9 +2521,6 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
   }
 }
 
-// =========================================================================
-// 2. كشكول السلك الأصلي (10 ورقات - كتابة نصية + رسم حر وألوان وحفظ تلقائي)
-// =========================================================================
 class _StrokePath {
   final List<Offset> points;
   final Color color;
@@ -2655,7 +2625,6 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
         ),
         body: Column(
           children: [
-            // شريط الألوان في وضع الرسم
             if (_isDrawMode)
               Container(
                 color: const Color(0xFF1F2937),
@@ -2684,8 +2653,6 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                   }).toList(),
                 ),
               ),
-
-            // ورقة الكشكول المسطرة بحلقات السلك
             Expanded(
               child: Container(
                 margin: const EdgeInsets.all(10),
@@ -2696,7 +2663,6 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                 ),
                 child: Row(
                   children: [
-                    // حلقات السلك الجانبية
                     Container(
                       width: 22,
                       color: const Color(0xFFE2E8F0),
@@ -2708,14 +2674,10 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                         ),
                       ),
                     ),
-                    // مساحة الورقة المسطرة
                     Expanded(
                       child: Stack(
                         children: [
-                          CustomPaint(
-                            size: Size.infinite,
-                            painter: _NotebookLinesPainter(),
-                          ),
+                          CustomPaint(size: Size.infinite, painter: _NotebookLinesPainter()),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(12, 4, 42, 8),
                             child: TextField(
@@ -2747,10 +2709,7 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                                 _currentStroke = null;
                                 _savePage();
                               },
-                              child: CustomPaint(
-                                size: Size.infinite,
-                                painter: _FreehandPainter(_strokes),
-                              ),
+                              child: CustomPaint(size: Size.infinite, painter: _FreehandPainter(_strokes)),
                             ),
                           ),
                         ],
@@ -2760,8 +2719,6 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                 ),
               ),
             ),
-
-            // شريط التنقل بين الـ 10 ورقات
             Container(
               color: const Color(0xFF1F2937),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -2841,9 +2798,6 @@ class _FreehandPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
-// =========================================================================
-// 3. لوحة الرسم الهندسي الأصلية (5 لوحات - خط، مستطيل، دائرة، رسم حر)
-// =========================================================================
 enum _EngShapeType { free, line, rect, circle }
 
 class _EngShapeItem {
@@ -2992,10 +2946,7 @@ class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
                         _activeShape = null;
                         _saveSheet();
                       },
-                      child: CustomPaint(
-                        size: Size.infinite,
-                        painter: _EngShapesPainter(_shapes),
-                      ),
+                      child: CustomPaint(size: Size.infinite, painter: _EngShapesPainter(_shapes)),
                     ),
                     Positioned(
                       bottom: 8,
