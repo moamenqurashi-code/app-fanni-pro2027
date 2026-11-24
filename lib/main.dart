@@ -1831,7 +1831,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   void _openScheduleDialog() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('fanni_schedule_2027');
-    List> items = raw != null ? List>.from(jsonDecode(raw)) : [];
+    final List items = raw != null ? jsonDecode(raw) : [];
 
     final subjectCtrl = TextEditingController();
     final timeCtrl = TextEditingController();
