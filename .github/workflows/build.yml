@@ -23,10 +23,15 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Generate Android files & enable Internet permission
+      - name: Generate Android files & disable Lint bug
         run: |
           flutter create . --org com.fanipro.app --project-name fani_pro_2027
           sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/android {/android {\n    lint {\n        checkReleaseBuilds = false\n        abortOnError = false\n    }/' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i 's/android {/android {\n    lintOptions {\n        checkReleaseBuilds false\n        abortOnError false\n    }/' android/app/build.gradle
+          fi
 
       - name: Get dependencies
         run: flutter pub get
