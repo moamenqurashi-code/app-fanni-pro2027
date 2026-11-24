@@ -12,6 +12,7 @@ const String kMainBlogUrl = 'https://hrinnf.blogspot.com';
 const String kLibraryBlogUrl = 'https://mktptfany.blogspot.com/?m=1';
 const String kPlayStoreUrl = 'https://play.google.com/store/apps/details?id=com.pro.ap4016842.skn';
 const String kLogoUrl = 'https://i.ibb.co/Jw1QZDcF/Picsart-26-11-22-15-43-13-999.png';
+const String kMascotUrl = 'https://i.ibb.co/GvxnqHr2/Picsart-26-11-13-00-23-59-671.png';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,12 +25,23 @@ class FaniProApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTheme = ThemeData(useMaterial3: true);
+    final cairoTheme = GoogleFonts.cairoTextTheme(baseTheme.textTheme).apply(
+      bodyColor: const Color(0xFF1E293B),
+      displayColor: const Color(0xFF1E293B),
+    );
+
     return MaterialApp(
       title: 'تطبيق فني برو 2027',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        textTheme: GoogleFonts.cairoTextTheme(),
+      theme: baseTheme.copyWith(
+        textTheme: cairoTheme.copyWith(
+          bodyLarge: cairoTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+          bodyMedium: cairoTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          bodySmall: cairoTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+          titleMedium: cairoTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          titleLarge: cairoTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+        ),
       ),
       home: const MainHomeScreen(),
     );
@@ -51,9 +63,16 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   bool _hasUnreadNotif = true;
   Timer? _tickerTimer;
   Timer? _mascotTimer;
+  final List<Timer> _mascotStepTimers = [];
 
-  // المرشد الصوتي
+  // المرشد الصوتي وتحديد الكروت
   final FlutterTts _flutterTts = FlutterTts();
+  final GlobalKey _rootStackKey = GlobalKey();
+  final Map<String, GlobalKey> _cardKeys = {};
+  String? _highlightedCardId;
+  bool _showMascotActor = false;
+  double _mascotLeft = 100;
+  double _mascotTop = 150;
   bool _showMascotToast = false;
   String _mascotTitle = '';
   String _mascotSpeech = '';
@@ -62,6 +81,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   Map<String, int> _viewsMap = {};
   int _chatMembers = 128;
   int _chatMessages = 342;
+
+  GlobalKey _keyForCard(String id) {
+    return _cardKeys.putIfAbsent(id, () => GlobalKey());
+  }
 
   @override
   void initState() {
@@ -74,6 +97,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   Future<void> _initTts() async {
     await _flutterTts.setLanguage('ar-EG');
     await _flutterTts.setSpeechRate(0.5);
+    _flutterTts.setCompletionHandler(() {
+      if (mounted) {
+        _mascotTimer?.cancel();
+        _mascotTimer = Timer(const Duration(seconds: 2), _closeMascot);
+      }
+    });
   }
 
   Future<void> _loadSavedData() async {
@@ -157,6 +186,17 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     }
   }
 
+  String get _stageFullUserTitle {
+    switch (_currentStage) {
+      case AppStage.diploma:
+        return 'طالب الدبلومات الفنية';
+      case AppStage.naql:
+        return 'طالب صفوف النقل الفني';
+      case AppStage.institutes:
+        return 'طالب معهد / كلية';
+    }
+  }
+
   String get _stageSubtitleText {
     switch (_currentStage) {
       case AppStage.diploma:
@@ -192,22 +232,22 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               children: [
                 Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
                 SizedBox(width: 8),
-                Text('تنبيه هام قبل الدخول', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
+                Text('تنبيه هام قبل الدخول', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900)),
               ],
             ),
             content: const Text(
               'هذا القسم مخصص للمدرسين والمعلنين فقط 👨‍🏫\nهل تود الاستمرار والدخول إلى القسم؟',
-              style: TextStyle(fontSize: 13.5, height: 1.5),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.5),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('خروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                child: const Text('خروج', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w800)),
               ),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669), foregroundColor: Colors.white),
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('استمرار', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: const Text('استمرار', style: TextStyle(fontWeight: FontWeight.w800)),
               ),
             ],
           ),
@@ -235,30 +275,81 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     return val >= 1000 ? '${(val / 1000).toStringAsFixed(1)}K' : '$val';
   }
 
-  Future<void> _activateMascot(String title, String speech) async {
+  void _clearMascotStepTimers() {
     _mascotTimer?.cancel();
+    for (final t in _mascotStepTimers) {
+      t.cancel();
+    }
+    _mascotStepTimers.clear();
+  }
+
+  void _moveMascotToCard(String cardId) {
+    final key = _cardKeys[cardId];
+    final cardContext = key?.currentContext;
+    final stackContext = _rootStackKey.currentContext;
+    if (cardContext == null || stackContext == null) return;
+
+    final cardBox = cardContext.findRenderObject() as RenderBox?;
+    final stackBox = stackContext.findRenderObject() as RenderBox?;
+    if (cardBox == null || stackBox == null) return;
+
+    final pos = cardBox.localToGlobal(Offset.zero, ancestor: stackBox);
+    final size = cardBox.size;
+
+    setState(() {
+      _highlightedCardId = cardId;
+      _showMascotActor = true;
+      _mascotLeft = (pos.dx + (size.width / 2) - 34).clamp(8.0, stackBox.size.width - 76.0);
+      _mascotTop = max(65.0, pos.dy - 68.0);
+    });
+  }
+
+  Future<void> _activateMascot(String title, String speech, List<String> cardIds) async {
+    _clearMascotStepTimers();
     await _flutterTts.stop();
+
     setState(() {
       _mascotTitle = 'مرشد فني برو • $title';
       _mascotSpeech = speech;
       _showMascotToast = true;
+      _highlightedCardId = cardIds.isNotEmpty ? cardIds.first : null;
     });
+
+    final totalMs = max(10000, speech.length * 110);
+
+    if (cardIds.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _moveMascotToCard(cardIds.first));
+      final stepMs = (totalMs / cardIds.length).floor();
+      for (int i = 1; i < cardIds.length; i++) {
+        final t = Timer(Duration(milliseconds: i * stepMs), () {
+          if (mounted) _moveMascotToCard(cardIds[i]);
+        });
+        _mascotStepTimers.add(t);
+      }
+    }
+
     await _flutterTts.speak(speech);
-    _mascotTimer = Timer(const Duration(seconds: 13), () {
-      if (mounted) setState(() => _showMascotToast = false);
+    _mascotTimer = Timer(Duration(milliseconds: totalMs + 3500), () {
+      if (mounted) _closeMascot();
     });
   }
 
   Future<void> _closeMascot() async {
-    _mascotTimer?.cancel();
+    _clearMascotStepTimers();
     await _flutterTts.stop();
-    setState(() => _showMascotToast = false);
+    if (mounted) {
+      setState(() {
+        _showMascotToast = false;
+        _showMascotActor = false;
+        _highlightedCardId = null;
+      });
+    }
   }
 
   @override
   void dispose() {
     _tickerTimer?.cancel();
-    _mascotTimer?.cancel();
+    _clearMascotStepTimers();
     _flutterTts.stop();
     super.dispose();
   }
@@ -271,6 +362,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         backgroundColor: const Color(0xFFF1F5F9),
         drawer: _buildSideDrawer(),
         body: Stack(
+          key: _rootStackKey,
           children: [
             Column(
               children: [
@@ -278,7 +370,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 if (_currentStage != AppStage.institutes) _buildNewsTicker(),
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 95),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 105),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -293,12 +385,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             icon: Icons.co_present_rounded,
                             gradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
                             speech: 'هذا القسم مخصص للمدرسين الراغبين في نشر شروحاتهم ومذكراتهم مجاناً، ولأصحاب السناتر والمكتبات للإعلان على التطبيق.',
+                            cardIds: const ['card_teacher', 'card_ads'],
                           ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
                               Expanded(
                                 child: _buildProCard(
+                                  cardId: 'card_teacher',
                                   title: 'انضم إلينا كمدرس معتمد 👨‍🏫',
                                   tag: 'للمدرسين فقط',
                                   tagColor: const Color(0xFFD97706),
@@ -319,6 +413,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _buildProCard(
+                                  cardId: 'card_ads',
                                   title: 'أعلن على تطبيقنا الآن',
                                   tag: 'للمعلنين',
                                   tagColor: const Color(0xFF4F46E5),
@@ -346,6 +441,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             icon: Icons.account_balance_rounded,
                             gradient: [_primaryColor, _primaryDarkColor],
                             speech: 'هنا البوابة الرسمية لوزارة التربية والتعليم المصرية لمتابعة القرارات الرسمية والاستمارات والخدمات الوزارية مباشرة.',
+                            cardIds: const ['card_ministry'],
                           ),
                           const SizedBox(height: 8),
                           _buildMinistryBanner(),
@@ -356,6 +452,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             icon: Icons.forum_rounded,
                             gradient: const [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
                             speech: 'هنا مجتمع طلاب التعليم الفني! تقدر تسأل زمايلك في أي مادة أو ملخص وتتبادلوا الخبرات والمساعدة الفورية.',
+                            cardIds: const ['card_chat'],
+                            trailingWidget: InkWell(
+                              onTap: () => _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب المباشر', '$kMainBlogUrl/search/label/الشات'),
+                              child: Text(
+                                'فتح الشات',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: _primaryColor),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 8),
                           _buildStudentChatCard(),
@@ -367,9 +471,28 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ],
             ),
 
+            // شخصية المرشد المتحركة فوق الكروت
+            if (_showMascotActor)
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
+                left: _mascotLeft,
+                top: _mascotTop,
+                child: IgnorePointer(
+                  child: Image.network(
+                    kMascotUrl,
+                    width: 68,
+                    height: 86,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text('👨‍🎓', style: TextStyle(fontSize: 44)),
+                  ),
+                ),
+              ),
+
+            // رسالة المرشد السفلية
             if (_showMascotToast)
               Positioned(
-                bottom: 86,
+                bottom: 92,
                 left: 12,
                 right: 12,
                 child: Container(
@@ -386,10 +509,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: Image.network(
-                          'https://i.ibb.co/GvxnqHr2/Picsart-26-11-13-00-23-59-671.png',
+                          kMascotUrl,
                           width: 38,
                           height: 38,
                           fit: BoxFit.cover,
+                          alignment: Alignment.topCenter,
                           errorBuilder: (_, __, ___) => const CircleAvatar(
                             backgroundColor: Color(0xFFF59E0B),
                             child: Text('👨‍🎓', style: TextStyle(fontSize: 18)),
@@ -403,12 +527,12 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           children: [
                             Text(
                               _mascotTitle,
-                              style: const TextStyle(color: Color(0xFFFDE047), fontSize: 11.5, fontWeight: FontWeight.bold),
+                              style: const TextStyle(color: Color(0xFFFDE047), fontSize: 11.5, fontWeight: FontWeight.w900),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               _mascotSpeech,
-                              style: const TextStyle(color: Colors.white, fontSize: 11.5, height: 1.45),
+                              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.45),
                             ),
                           ],
                         ),
@@ -424,6 +548,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
 
+            // شريط التنقل السفلي العائم مع زر شنطة الأدوات القابل للضغط بالكامل
             Positioned(
               bottom: 10,
               left: 12,
@@ -480,11 +605,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               children: [
                 const Text(
                   'تطبيق فني برو',
-                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, height: 1.15),
+                  style: TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w900, height: 1.15),
                 ),
                 Text(
                   _stageSubtitleText,
-                  style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 10, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 10, fontWeight: FontWeight.w800),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -504,7 +629,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 children: [
                   const Icon(Icons.repeat_rounded, color: Colors.white, size: 13),
                   const SizedBox(width: 4),
-                  Text(_stageBadgeText, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                  Text(_stageBadgeText, style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w900)),
                 ],
               ),
             ),
@@ -530,7 +655,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       borderRadius: BorderRadius.circular(50),
                       border: Border.all(color: _primaryColor, width: 1.5),
                     ),
-                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
                   ),
                 ),
             ],
@@ -577,7 +702,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             ? const Center(
                 child: Text(
                   '✨ صلِّ على محمد ﷺ .. اللهم صلِّ وسلم وبارك على نبينا محمد ✨',
-                  style: TextStyle(color: Color(0xFFFEF08A), fontSize: 12, fontWeight: FontWeight.w800),
+                  style: TextStyle(color: Color(0xFFFEF08A), fontSize: 12, fontWeight: FontWeight.w900),
                 ),
               )
             : Row(
@@ -601,7 +726,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       child: Center(
                         child: Text(
                           'أهلاً بك في التطبيق الأول للتعليم الفني في مصر 🇪🇬 .. جميع المذكرات والشروحات والأدوات الهندسية في مكان واحد!',
-                          style: TextStyle(color: Color(0xFFFEF3C7), fontSize: 11, fontWeight: FontWeight.w700),
+                          style: TextStyle(color: Color(0xFFFEF3C7), fontSize: 11, fontWeight: FontWeight.w800),
                         ),
                       ),
                     ),
@@ -619,12 +744,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.menu_book_rounded,
         gradient: [_primaryColor, _primaryDarkColor],
         speech: 'هنا أساس المذاكرة لشهادة الدبلومات 3 و 5 سنوات! الكرت الأول فيه مكتبة المذكرات والمراجعات لكل التخصصات، والكرت الثاني فيه شروحات الدروس بالفيديو.',
+        cardIds: const ['card_memo', 'card_lessons'],
       ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_memo',
               title: 'مكتبة المذكرات والمراجعات 2027',
               tag: '3 و 5 سنوات',
               bannerGradient: const [Color(0xFF10B981), Color(0xFF047857)],
@@ -639,6 +766,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_lessons',
               title: 'شروحات المناهج والدروس 2027',
               tag: '3 و 5 سنوات',
               bannerGradient: const [Color(0xFFF59E0B), Color(0xFFB45309)],
@@ -658,12 +786,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.emoji_events_rounded,
         gradient: const [Color(0xFF4F46E5), Color(0xFF0891B2)],
         speech: 'هنا منطقة التدريب والألعاب التعليمية! معاك بنك الاختبارات النهائية، واختبار الذكاء، ولعبتين ممتعتين للتفوق وقوانين لجنة الدبلوم.',
+        cardIds: const ['card_exams', 'card_quiz', 'card_game1', 'card_game2'],
       ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_exams',
               title: 'بنك الاختبارات النهائية بالاجابة 2027',
               tag: 'محلولة',
               bannerGradient: const [Color(0xFF6366F1), Color(0xFF4338CA)],
@@ -677,6 +807,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_quiz',
               title: 'اختبر ذكائك ونشط ذاكرتك',
               tag: 'تفاعلي',
               bannerImageUrl: 'https://i.ibb.co/gZjphGy5/Picsart-26-05-12-18-24-51-116.jpg',
@@ -693,6 +824,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_game1',
               title: 'تحدي التفوق والامتحانات 🏆',
               tag: 'لعبة تحدي التفوق',
               tagColor: const Color(0xFFF59E0B),
@@ -709,6 +841,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_game2',
               title: 'من سينجح في امتحانات الدبلوم؟',
               tag: 'قوانين اللجنة 🎓',
               tagColor: const Color(0xFF10B981),
@@ -729,12 +862,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.analytics_rounded,
         gradient: const [Color(0xFF10B981), Color(0xFF0891B2)],
         speech: 'وقت ظهور النتيجة تقدر تستعلم برقم الجلوس فوراً من الكرت الأول، وتحسب نسبتك المئوية بدقة من الكرت الثاني.',
+        cardIds: const ['card_results', 'card_percent'],
       ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_results',
               title: 'خدمات نتائج الإمتحانات 2027',
               tag: 'برقم الجلوس',
               bannerGradient: const [Color(0xFF10B981), Color(0xFF047857)],
@@ -748,6 +883,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_percent',
               title: 'احسب النسبة المئوية لنتيجتك',
               tag: 'حاسبة دقيقة',
               bannerImageUrl: 'https://i.ibb.co/ymTk28FX/Picsart-26-05-02-20-11-05-036.jpg',
@@ -765,12 +901,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.school_rounded,
         gradient: const [Color(0xFF0284C7), Color(0xFFDC2626)],
         speech: 'بعد الدبلوم طريقك للكلية يبدأ من هنا! تابع تسجيل رغبات التنسيق الإلكتروني من الكرت الأول، واعرف شروط المعاهد والكليات والمعادلات من الكرت الثاني.',
+        cardIds: const ['card_coord', 'card_eq'],
       ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_coord',
               title: 'خدمات التنسيق الإلكتروني 2027',
               tag: 'تسجيل الرغبات',
               bannerGradient: const [Color(0xFF0284C7), Color(0xFF0369A1)],
@@ -784,6 +922,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_eq',
               title: 'المعاهد والكليات والمعادلات 2027',
               tag: 'شروط القبول',
               bannerGradient: const [Color(0xFFEF4444), Color(0xFFB91C1C)],
@@ -802,9 +941,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.groups_rounded,
         gradient: const [Color(0xFFEC4899), Color(0xFFBE185D)],
         speech: 'هنا مساحة تبادل الخبرات والنصائح الدراسية بين طلاب الدبلومات الفنية لمساعدة بعضكم في المذاكرة والامتحانات.',
+        cardIds: const ['card_advise_dip'],
       ),
       const SizedBox(height: 8),
       _buildProCard(
+        cardId: 'card_advise_dip',
         title: 'انصح زميلك وتبادل الخبرات بين طلاب الدبلومات 💡',
         tag: 'تجارب وخبرات',
         bannerGradient: const [Color(0xFFEC4899), Color(0xFFBE185D)],
@@ -824,9 +965,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.school_rounded,
         gradient: [_primaryColor, _primaryDarkColor],
         speech: 'هنا مكتبة المذكرات والمراجعات النهائية الشاملة لصفوف النقل نظام 3 سنوات ونظام 5 سنوات لجميع التخصصات.',
+        cardIds: const ['card_naql_memo'],
       ),
       const SizedBox(height: 8),
       _buildProCard(
+        cardId: 'card_naql_memo',
         title: 'مكتبة المذكرات والمراجعات لصفوف النقل 2027',
         tag: 'أولى وتانية (3س) • ومن 1 إلى 4 (5س)',
         tagColor: const Color(0xFFD97706),
@@ -861,8 +1004,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('تابع جروب الفيس بوك الرسمي', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
-                    Text('أخبار ومراجعات صفوف النقل بالتعليم الفني', style: TextStyle(color: Color(0xFFDBEAFE), fontSize: 11)),
+                    Text('تابع جروب الفيس بوك الرسمي', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+                    Text('أخبار ومراجعات صفوف النقل بالتعليم الفني', style: TextStyle(color: Color(0xFFDBEAFE), fontSize: 11, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -888,7 +1031,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           children: [
             Text(
               '⭐ رفيقك في التعليم الجامعي والمعاهد',
-              style: TextStyle(color: Color(0xFFFDE047), fontSize: 10.5, fontWeight: FontWeight.w800),
+              style: TextStyle(color: Color(0xFFFDE047), fontSize: 10.5, fontWeight: FontWeight.w900),
             ),
             SizedBox(height: 6),
             Text(
@@ -898,7 +1041,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             SizedBox(height: 4),
             Text(
               'جهزنا لكم في هذا القسم أفضل الأدوات العملية والهندسية لتنظيم السكاشن والمحاضرات والرسم الهندسي وتدوين الملاحظات بكل احترافية.',
-              style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 11, height: 1.45),
+              style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 11, fontWeight: FontWeight.w700, height: 1.45),
             ),
           ],
         ),
@@ -909,12 +1052,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         icon: Icons.architecture_rounded,
         gradient: [_primaryColor, _primaryDarkColor],
         speech: 'هنا أدواتك العملية في السكاشن: لوحة الرسم الهندسي، كشكول السكاشن 10 ورقات، جدول المحاضرات والسكاشن، والآلة الحاسبة الفورية.',
+        cardIds: const ['card_inst_eng', 'card_inst_nb', 'card_inst_sch', 'card_inst_calc'],
       ),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_inst_eng',
               title: 'لوحة الرسم الهندسي والاسكتشات 📐',
               tag: 'سكاشن الرسم',
               bannerGradient: const [Color(0xFF0369A1), Color(0xFF0EA5E9)],
@@ -929,6 +1074,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_inst_nb',
               title: 'كشكول السكاشن والمحاضرات (10 ورقات) 📝',
               tag: 'كشكول السكاشن',
               bannerGradient: const [Color(0xFF312E81), Color(0xFF4338CA)],
@@ -947,6 +1093,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         children: [
           Expanded(
             child: _buildProCard(
+              cardId: 'card_inst_sch',
               title: 'جدول السكاشن والمحاضرات الأسبوعي 📅',
               tag: 'مواعيد السكاشن',
               bannerGradient: const [Color(0xFF9D174D), Color(0xFFDB2777)],
@@ -960,6 +1107,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: _buildProCard(
+              cardId: 'card_inst_calc',
               title: 'آلة حاسبة سريعة للسكاشن والمعامل 🧮',
               tag: 'حاسبة فورية',
               bannerGradient: const [Color(0xFF065F46), Color(0xFF047857)],
@@ -974,6 +1122,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
       const SizedBox(height: 16),
       _buildProCard(
+        cardId: 'card_inst_advise',
         title: 'انصح زميلك وتبادل الخبرات في المعاهد والكليات 💡',
         tag: 'تجارب المعاهد',
         bannerGradient: const [Color(0xFFEC4899), Color(0xFFBE185D)],
@@ -985,11 +1134,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       ),
     ];
   }
+
   Widget _buildSectionHead({
     required String title,
     required IconData icon,
     required List<Color> gradient,
     required String speech,
+    List<String> cardIds = const [],
+    Widget? trailingWidget,
   }) {
     return Row(
       children: [
@@ -1001,10 +1153,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         ),
         const SizedBox(width: 7),
         Expanded(
-          child: Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
+          child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF1E293B))),
         ),
         InkWell(
-          onTap: () => _activateMascot(title, speech),
+          onTap: () => _activateMascot(title, speech, cardIds),
           borderRadius: BorderRadius.circular(50),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1017,16 +1169,21 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               children: [
                 const Text('👨‍🎓', style: TextStyle(fontSize: 12)),
                 const SizedBox(width: 3),
-                Text('شرح', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _primaryColor)),
+                Text('شرح', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _primaryColor)),
               ],
             ),
           ),
         ),
+        if (trailingWidget != null) ...[
+          const SizedBox(width: 8),
+          trailingWidget,
+        ],
       ],
     );
   }
 
   Widget _buildProCard({
+    required String cardId,
     required String title,
     required String tag,
     Color tagColor = const Color(0xB30F172A),
@@ -1041,19 +1198,30 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     bool isDashedBorder = false,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isFeatured || isDashedBorder ? const Color(0xFFF59E0B) : const Color(0xFFE2E8F0),
-            width: isFeatured || isDashedBorder ? 1.5 : 1,
-          ),
-          boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 3))],
+    final bool isBeingExplained = _highlightedCardId == cardId;
+
+    return AnimatedContainer(
+      key: _keyForCard(cardId),
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isBeingExplained
+              ? const Color(0xFFF59E0B)
+              : (isFeatured || isDashedBorder ? const Color(0xFFF59E0B) : const Color(0xFFE2E8F0)),
+          width: isBeingExplained ? 2.5 : (isFeatured || isDashedBorder ? 1.5 : 1),
         ),
+        boxShadow: [
+          if (isBeingExplained)
+            BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.55), blurRadius: 14, spreadRadius: 1)
+          else
+            BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 3)),
+        ],
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1061,14 +1229,14 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               height: 78,
               decoration: BoxDecoration(
                 gradient: bannerGradient != null ? LinearGradient(colors: bannerGradient) : null,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12.5)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   if (bannerImageUrl != null)
                     ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12.5)),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                       child: Image.network(
                         bannerImageUrl,
                         fit: BoxFit.cover,
@@ -1097,7 +1265,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(color: tagColor, borderRadius: BorderRadius.circular(50)),
-                      child: Text(tag, style: TextStyle(color: tagTextColor, fontSize: 8.5, fontWeight: FontWeight.w800)),
+                      child: Text(tag, style: TextStyle(color: tagTextColor, fontSize: 8.5, fontWeight: FontWeight.w900)),
                     ),
                   ),
                 ],
@@ -1114,7 +1282,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF1E293B), height: 1.3),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF1E293B), height: 1.3),
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -1127,7 +1295,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         children: [
                           Icon(Icons.remove_red_eye_rounded, size: 12, color: actionColor),
                           const SizedBox(width: 3),
-                          Text(viewsText, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF64748B))),
+                          Text(viewsText, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF64748B))),
                         ],
                       ),
                       Container(
@@ -1135,7 +1303,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         decoration: BoxDecoration(color: actionColor, borderRadius: BorderRadius.circular(50)),
                         child: Row(
                           children: [
-                            Text(actionText, style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                            Text(actionText, style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900)),
                             const SizedBox(width: 3),
                             const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 10),
                           ],
@@ -1153,196 +1321,228 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   }
 
   Widget _buildMinistryBanner() {
-    return InkWell(
-      onTap: () => _incrementAndOpen('view_moe_gov_v2', 45000, 'وزارة التربية والتعليم', 'https://moe.gov.eg'),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF1E293B), Color(0xFF0F172A)]),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.35)),
+    final bool isBeingExplained = _highlightedCardId == 'card_ministry';
+    return AnimatedContainer(
+      key: _keyForCard('card_ministry'),
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xFF1E293B), Color(0xFF0F172A)]),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isBeingExplained ? const Color(0xFFF59E0B) : const Color(0xFF6366F1).withOpacity(0.35),
+          width: isBeingExplained ? 2.5 : 1,
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.22), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.account_balance_rounded, color: Color(0xFF38BDF8), size: 20),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('الموقع الرسمي لوزارة التربية والتعليم', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w800)),
-                  Text('🌐 بوابة الخدمات الرسمية', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5, fontWeight: FontWeight.w600)),
-                ],
+        boxShadow: isBeingExplained
+            ? [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.55), blurRadius: 14, spreadRadius: 1)]
+            : null,
+      ),
+      child: InkWell(
+        onTap: () => _incrementAndOpen('view_moe_gov_v2', 45000, 'وزارة التربية والتعليم', 'https://moe.gov.eg'),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.22), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.account_balance_rounded, color: Color(0xFF38BDF8), size: 20),
               ),
-            ),
-            const Icon(Icons.arrow_back_rounded, color: Color(0xFF818CF8), size: 18),
-          ],
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('الموقع الرسمي لوزارة التربية والتعليم', style: TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w900)),
+                    Text('🌐 بوابة الخدمات الرسمية', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_back_rounded, color: Color(0xFF818CF8), size: 18),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildStudentChatCard() {
-    return InkWell(
-      onTap: () async {
-        final prefs = await SharedPreferences.getInstance();
-        setState(() {
-          _chatMembers += 1;
-          _chatMessages += 3;
-        });
-        await prefs.setInt('chat_members_count', _chatMembers);
-        await prefs.setInt('chat_messages_count', _chatMessages);
-        _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب المباشر', '$kMainBlogUrl/search/label/الشات');
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF312E81), Color(0xFF1E1B4B)]),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('شات الطلاب المباشر', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
-                    Text('نقاش ومساعدة فورية بين الطلاب', style: TextStyle(color: Colors.white70, fontSize: 10.5)),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(50),
-                    border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
-                  ),
-                  child: const Row(
+    final bool isBeingExplained = _highlightedCardId == 'card_chat';
+    return AnimatedContainer(
+      key: _keyForCard('card_chat'),
+      duration: const Duration(milliseconds: 250),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [Color(0xFF312E81), Color(0xFF1E1B4B)]),
+        borderRadius: BorderRadius.circular(12),
+        border: isBeingExplained ? Border.all(color: const Color(0xFFF59E0B), width: 2.5) : null,
+        boxShadow: isBeingExplained
+            ? [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.55), blurRadius: 14, spreadRadius: 1)]
+            : null,
+      ),
+      child: InkWell(
+        onTap: () async {
+          final prefs = await SharedPreferences.getInstance();
+          setState(() {
+            _chatMembers += 1;
+            _chatMessages += 3;
+          });
+          await prefs.setInt('chat_members_count', _chatMembers);
+          await prefs.setInt('chat_messages_count', _chatMessages);
+          _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب المباشر', '$kMainBlogUrl/search/label/الشات');
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(radius: 3, backgroundColor: Color(0xFF34D399)),
-                      SizedBox(width: 4),
-                      Text('47 متصل', style: TextStyle(color: Color(0xFF34D399), fontSize: 10, fontWeight: FontWeight.bold)),
+                      Text('شات الطلاب المباشر', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900)),
+                      Text('نقاش ومساعدة فورية بين الطلاب', style: TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w700)),
                     ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
-                child: const Text('حد عنده ملخص مادة الرياضيات التطبيقية؟', style: TextStyle(color: Colors.white, fontSize: 11)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(50),
+                      border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+                    ),
+                    child: const Row(
+                      children: [
+                        CircleAvatar(radius: 3, backgroundColor: Color(0xFF34D399)),
+                        SizedBox(width: 4),
+                        Text('47 متصل', style: TextStyle(color: Color(0xFF34D399), fontSize: 10, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 5),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.35), borderRadius: BorderRadius.circular(9)),
-                child: const Text('عندي ملخص كامل، بعته في القروب 📝', style: TextStyle(color: Colors.white, fontSize: 11)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Divider(height: 1, color: Colors.white12),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('👥 $_chatMembers عضو  •  💬 $_chatMessages رسالة اليوم', style: const TextStyle(color: Colors.white70, fontSize: 10)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(50)),
-                  child: const Text('انضم الآن ←', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(9)),
+                  child: const Text('حد عنده ملخص مادة الرياضيات التطبيقية؟', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
                 ),
-              ],
-            ),
-          ],
+              ),
+              const SizedBox(height: 5),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: const Color(0xFF6366F1).withOpacity(0.35), borderRadius: BorderRadius.circular(9)),
+                  child: const Text('عندي ملخص كامل، بعته في القروب 📝', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Divider(height: 1, color: Colors.white12),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('👥 $_chatMembers عضو  •  💬 $_chatMessages رسالة اليوم', style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700)),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(50)),
+                    child: const Text('انضم الآن ←', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildFloatingBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.14), blurRadius: 18, offset: const Offset(0, 4))],
-      ),
+    return SizedBox(
+      height: 74,
       child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
+        alignment: Alignment.bottomCenter,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _bottomNavItem(Icons.home_rounded, 'الرئيسية', true, () {}),
-              _bottomNavItem(
-                _currentStage == AppStage.institutes ? Icons.share_rounded : Icons.rss_feed_rounded,
-                _currentStage == AppStage.institutes ? 'مشاركة' : (_currentStage == AppStage.naql ? 'الجروب' : 'تابع'),
-                false,
-                () {
-                  if (_currentStage == AppStage.institutes) {
-                    _openShareDialog();
-                  } else {
-                    _incrementAndOpen('view_platforms', 20000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
-                  }
-                },
-              ),
-              const SizedBox(width: 64),
-              _bottomNavItem(
-                _currentStage == AppStage.institutes ? Icons.calendar_month_rounded : Icons.share_rounded,
-                _currentStage == AppStage.institutes ? 'السكاشن' : 'مشاركة',
-                false,
-                () {
-                  if (_currentStage == AppStage.institutes) {
-                    _openScheduleDialog();
-                  } else {
-                    _openShareDialog();
-                  }
-                },
-              ),
-              _bottomNavItem(Icons.repeat_rounded, 'المرحلة', false, _showStageOnboardingDialog),
-            ],
+          Container(
+            height: 58,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.14), blurRadius: 18, offset: const Offset(0, 4))],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _bottomNavItem(Icons.home_rounded, 'الرئيسية', true, () {}),
+                _bottomNavItem(
+                  _currentStage == AppStage.institutes ? Icons.share_rounded : Icons.rss_feed_rounded,
+                  _currentStage == AppStage.institutes ? 'مشاركة' : (_currentStage == AppStage.naql ? 'الجروب' : 'تابع'),
+                  false,
+                  () {
+                    if (_currentStage == AppStage.institutes) {
+                      _openShareDialog();
+                    } else {
+                      _incrementAndOpen('view_platforms', 20000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
+                    }
+                  },
+                ),
+                const SizedBox(width: 68),
+                _bottomNavItem(
+                  _currentStage == AppStage.institutes ? Icons.calendar_month_rounded : Icons.share_rounded,
+                  _currentStage == AppStage.institutes ? 'السكاشن' : 'مشاركة',
+                  false,
+                  () {
+                    if (_currentStage == AppStage.institutes) {
+                      _openScheduleDialog();
+                    } else {
+                      _openShareDialog();
+                    }
+                  },
+                ),
+                _bottomNavItem(Icons.repeat_rounded, 'المرحلة', false, _showStageOnboardingDialog),
+              ],
+            ),
           ),
-          Positioned(
-            top: -22,
-            child: GestureDetector(
-              onTap: _openUnifiedToolboxDialog,
-              child: Column(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [_primaryDarkColor, const Color(0xFF06B6D4)]),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white, width: 3),
-                      boxShadow: [BoxShadow(color: _primaryColor.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
-                    ),
-                    child: const Icon(Icons.work_rounded, color: Colors.white, size: 22),
+          // زر شنطة الأدوات بالكامل (الأيقونة + النص) يستجيب للمس
+          Align(
+            alignment: Alignment.topCenter,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _openUnifiedToolboxDialog,
+                borderRadius: BorderRadius.circular(18),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [_primaryDarkColor, const Color(0xFF06B6D4)]),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [BoxShadow(color: _primaryColor.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4))],
+                        ),
+                        child: const Icon(Icons.work_rounded, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _currentStage == AppStage.institutes ? 'أدوات السكاشن' : 'شنطة الأدوات',
+                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: _primaryColor),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _currentStage == AppStage.institutes ? 'أدوات السكاشن' : 'شنطة الأدوات',
-                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: _primaryColor),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1354,61 +1554,82 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   Widget _bottomNavItem(IconData icon, String label, bool isActive, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 19, color: isActive ? _primaryColor : const Color(0xFF64748B)),
-          Text(
-            label,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: isActive ? _primaryColor : const Color(0xFF64748B)),
-          ),
-        ],
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 19, color: isActive ? _primaryColor : const Color(0xFF64748B)),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: isActive ? _primaryColor : const Color(0xFF64748B)),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildSideDrawer() {
     return Drawer(
-      width: 270,
+      width: 265,
+      backgroundColor: Colors.white,
       child: Column(
         children: [
           Container(
-            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, bottom: 14, left: 12, right: 12),
+            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 10, bottom: 12, left: 12, right: 12),
             decoration: BoxDecoration(gradient: LinearGradient(colors: [_primaryColor, _primaryDarkColor])),
             child: Column(
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _drawerPillBtn('من نحن', () {
-                      Navigator.pop(context);
-                      _incrementAndOpen('v_about', 1000, 'من نحن', '$kMainBlogUrl/search/label/من%20نحن');
-                    }),
-                    const SizedBox(width: 6),
-                    _drawerPillBtn('سياسة الخصوصية', () {
-                      Navigator.pop(context);
-                      _incrementAndOpen('v_priv', 1000, 'سياسة الخصوصية', '$kMainBlogUrl/search/label/سياسة%20الخصوصية');
-                    }),
+                    Row(
+                      children: [
+                        _drawerPillBtn('من نحن', Icons.info_outline_rounded, () {
+                          Navigator.pop(context);
+                          _incrementAndOpen('v_about', 1000, 'من نحن', '$kMainBlogUrl/search/label/من%20نحن');
+                        }),
+                        const SizedBox(width: 5),
+                        _drawerPillBtn('سياسة الخصوصية', Icons.shield_outlined, () {
+                          Navigator.pop(context);
+                          _incrementAndOpen('v_priv', 1000, 'سياسة الخصوصية', '$kMainBlogUrl/search/label/سياسة%20الخصوصية');
+                        }),
+                      ],
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), borderRadius: BorderRadius.circular(7)),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 11),
                 Row(
                   children: [
                     Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(9)),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(9),
                         child: Image.network(kLogoUrl, fit: BoxFit.cover),
                       ),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 9),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_stageBadgeText, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                          const Text('التطبيق الأول للتعليم الفني في مصر', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                          Text(_stageFullUserTitle, style: const TextStyle(color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w900)),
+                          const Text('التطبيق الأول للتعليم الفني في مصر', style: TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
@@ -1435,9 +1656,13 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     Navigator.pop(context);
                     _incrementAndOpen('view_lessons_2027_v2', 74200, 'شروحات المناهج', '$kMainBlogUrl/search/label/الشروحات');
                   }),
-                  _drawerTile(Icons.assignment_turned_in_rounded, 'بنك الاختبارات النهائية 2027', () {
+                  _drawerTile(Icons.assignment_turned_in_rounded, 'بنك الاختبارات النهائية بالاجابة 2027', () {
                     Navigator.pop(context);
                     _incrementAndOpen('view_exams_2027_v2', 68900, 'بنك الاختبارات', '$kMainBlogUrl/search/label/الاختبارات');
+                  }),
+                  _drawerTile(Icons.chat_bubble_rounded, 'انصح زميلك وتبادل الخبرات', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_advise_diploma_v2', 49300, 'انصح زميلك', '$kMainBlogUrl/search/label/انصح%20زميلك');
                   }),
                   _drawerTile(Icons.fact_check_rounded, 'خدمات نتائج الإمتحانات 2027', () {
                     Navigator.pop(context);
@@ -1451,15 +1676,41 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     Navigator.pop(context);
                     _incrementAndOpen('view_coord_2027_v2', 76900, 'التنسيق الإلكتروني', '$kMainBlogUrl/search/label/التنسيق');
                   }),
+                  _drawerTile(Icons.percent_rounded, 'احسب النسبة المئوية لنتيجتك', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_calc_2027_v2', 81500, 'حساب النسبة المئوية', '$kMainBlogUrl/search/label/حساب%20النسبة');
+                  }),
                   _drawerTile(Icons.smart_toy_rounded, 'مساعد فنير الدراسي 2027', () {
                     Navigator.pop(context);
                     _incrementAndOpen('view_faneer', 50000, 'مساعد فنير', '$kMainBlogUrl/search/label/مساعد%20فنير');
                   }),
+                  _drawerTile(Icons.hub_rounded, 'تابع كل منصاتنا الرسمية', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_platforms', 20000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
+                  }),
+                  _drawerTile(
+                    Icons.mark_email_unread_rounded,
+                    'استقبال رسائل الطلاب',
+                    () {
+                      Navigator.pop(context);
+                      _incrementAndOpen(
+                        'view_student_msgs',
+                        15000,
+                        'استقبال رسائل الطلاب',
+                        'https://public.amwaly.com/blog/176043/دليل-طلاب-الدبلومات-الفنية-2026-روابط-استقبال-الرسائل',
+                      );
+                    },
+                    isHighlighted: true,
+                  ),
                   _drawerTile(Icons.forum_rounded, 'شات الطلاب المباشر', () {
                     Navigator.pop(context);
                     _incrementAndOpen('view_chat_v2', 60000, 'شات الطلاب', '$kMainBlogUrl/search/label/الشات');
                   }),
-                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة)', () {
+                  _drawerTile(Icons.psychology_rounded, 'اختبر ذكائك نشط ذاكرتك', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_quiz_2027_v2', 52600, 'اختبر ذكائك', '$kMainBlogUrl/search/label/اختبر%20ذكائك');
+                  }),
+                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة، تركيز)', () {
                     Navigator.pop(context);
                     _openUnifiedToolboxDialog();
                   }),
@@ -1473,17 +1724,21 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     Navigator.pop(context);
                     _incrementAndOpen('view_fb_official_v2', 35000, 'منصاتنا الرسمية', '$kMainBlogUrl/search/label/المنصات');
                   }),
-                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة)', () {
+                  _drawerTile(Icons.work_rounded, 'شنطة الأدوات (كشكول، رسم، حاسبة، تركيز)', () {
                     Navigator.pop(context);
                     _openUnifiedToolboxDialog();
                   }),
                 ],
                 if (_currentStage == AppStage.institutes) ...[
+                  _drawerTile(Icons.chat_bubble_rounded, 'انصح زميلك وتبادل الخبرات', () {
+                    Navigator.pop(context);
+                    _incrementAndOpen('view_advise_inst_v2', 48700, 'مجتمع المعاهد والكليات', '$kMainBlogUrl/search/label/انصح%20زميلك');
+                  }),
                   _drawerTile(Icons.menu_book_rounded, 'كشكول السكاشن (10 أوراق)', () {
                     Navigator.pop(context);
                     _openSpiralNotebookScreen();
                   }),
-                  _drawerTile(Icons.architecture_rounded, 'لوحة الرسم الهندسي (5 لوحات)', () {
+                  _drawerTile(Icons.architecture_rounded, 'لوحة الرسم الهندسي', () {
                     Navigator.pop(context);
                     _openEngineeringPadScreen();
                   }),
@@ -1495,15 +1750,19 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     Navigator.pop(context);
                     _openCalculatorDialog();
                   }),
-                  _drawerTile(Icons.timer_rounded, 'غرفة التركيز (بومودورو)', () {
+                  _drawerTile(Icons.timer_rounded, 'غرفة التركيز (مؤقت)', () {
                     Navigator.pop(context);
                     _openFocusTimerDialog();
+                  }),
+                  _drawerTile(Icons.local_fire_department_rounded, 'حماس المذاكرة اليومي', () {
+                    Navigator.pop(context);
+                    _openHamasDialog();
                   }),
                 ],
                 _drawerTile(Icons.share_rounded, 'مشاركة التطبيق', () {
                   Navigator.pop(context);
                   _openShareDialog();
-                }),
+                }, isLast: true),
               ],
             ),
           ),
@@ -1511,42 +1770,104 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             padding: const EdgeInsets.all(10),
             alignment: Alignment.center,
             decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFFE2E8F0)))),
-            child: const Text('فني برو © 2027', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+            child: const Text('فني برو © 2027', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF64748B))),
           ),
         ],
       ),
     );
   }
 
-  Widget _drawerPillBtn(String text, VoidCallback onTap) {
+  Widget _drawerPillBtn(String text, IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(50),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.2),
           borderRadius: BorderRadius.circular(50),
-          border: Border.all(color: Colors.white38),
+          border: Border.all(color: Colors.white54),
         ),
-        child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+        child: Row(
+          children: [
+            Icon(icon, color: const Color(0xFFFDE047), size: 11),
+            const SizedBox(width: 3),
+            Text(text, style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _drawerTile(IconData icon, String title, VoidCallback onTap) {
-    return ListTile(
-      dense: true,
-      leading: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(7)),
-        child: Icon(icon, size: 15, color: _primaryColor),
-      ),
-      title: Text(title, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-      onTap: onTap,
+  Widget _drawerTile(IconData icon, String title, VoidCallback onTap, {bool isHighlighted = false, bool isLast = false}) {
+    if (isHighlighted) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF59E0B).withOpacity(0.12),
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(9),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFD97706)]),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(icon, size: 13, color: Colors.white),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFFB45309)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(7)),
+                  child: Icon(icon, size: 13, color: _primaryColor),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (!isLast) const Divider(height: 1, color: Color(0xFFE2E8F0)),
+      ],
     );
   }
-
   void _showStageOnboardingDialog() {
     showDialog(
       context: context,
@@ -1567,7 +1888,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 const SizedBox(height: 8),
                 const Text('أهلاً بك في تطبيق فني برو 🎓', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 4),
-                const Text('اختر مرحلتك الدراسية للدخول مباشرة إلى قسمك', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                const Text('اختر مرحلتك الدراسية للدخول مباشرة إلى قسمك', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
                 const SizedBox(height: 14),
                 _stageOptionCard(
                   ctx: ctx,
@@ -1638,7 +1959,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
-                  Text(subtitle, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                  Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
                 ],
               ),
             ),
@@ -1655,9 +1976,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       builder: (ctx) => Directionality(
         textDirection: TextDirection.rtl,
         child: Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1666,24 +1989,44 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.work_rounded, color: _primaryColor, size: 20),
-                        const SizedBox(width: 6),
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [_primaryColor, _primaryDarkColor]),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.work_rounded, color: Colors.white, size: 15),
+                        ),
+                        const SizedBox(width: 8),
                         Text(
                           _currentStage == AppStage.institutes ? 'أدوات السكاشن والمحاضرات' : 'شنطة أدوات فني برو',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _primaryColor),
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _primaryDarkColor),
                         ),
                       ],
                     ),
-                    IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => Navigator.pop(ctx)),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
+                        child: const Icon(Icons.close_rounded, size: 17, color: Color(0xFF475569)),
+                      ),
+                    ),
                   ],
                 ),
-                const Divider(),
+                const SizedBox(height: 8),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                const SizedBox(height: 10),
                 GridView.count(
                   shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 2,
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
-                  childAspectRatio: 1.35,
+                  childAspectRatio: 1.55,
                   children: [
                     _toolboxGridTile(
                       icon: Icons.menu_book_rounded,
@@ -1786,9 +2129,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(13),
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(13),
           border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
@@ -1796,14 +2139,24 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, color: Colors.white, size: 17),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(9)),
+              child: Icon(icon, color: Colors.white, size: 16),
             ),
             const SizedBox(height: 5),
-            Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
-            Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF1E293B)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              sub,
+              style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
       ),
@@ -1851,7 +2204,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               children: [
                 Icon(Icons.calendar_month_rounded, color: Color(0xFFDB2777)),
                 SizedBox(width: 6),
-                Text('جدول دروسي وسكاشني', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Text('جدول دروسي وسكاشني', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
               ],
             ),
             content: SizedBox(
@@ -1871,7 +2224,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           child: DropdownButtonFormField<String>(
                             value: selectedDay,
                             decoration: const InputDecoration(labelText: 'اليوم', border: OutlineInputBorder(), isDense: true),
-                            items: days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12)))).toList(),
+                            items: days.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)))).toList(),
                             onChanged: (v) => setModalState(() => selectedDay = v!),
                           ),
                         ),
@@ -1895,7 +2248,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDB2777), foregroundColor: Colors.white),
                         icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('إضافة للجدول وحفظ', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const Text('إضافة للجدول وحفظ', style: TextStyle(fontWeight: FontWeight.w900)),
                         onPressed: () async {
                           if (subjectCtrl.text.trim().isEmpty) return;
                           setModalState(() {
@@ -1915,7 +2268,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     ),
                     const Divider(height: 18),
                     if (items.isEmpty)
-                      const Text('لا توجد مواعيد مضافة حالياً.', style: TextStyle(fontSize: 12, color: Colors.grey))
+                      const Text('لا توجد مواعيد مضافة حالياً.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.grey))
                     else
                       ...items.asMap().entries.map((entry) {
                         final idx = entry.key;
@@ -1924,8 +2277,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           margin: const EdgeInsets.only(bottom: 6),
                           child: ListTile(
                             dense: true,
-                            title: Text(it['subject'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                            subtitle: Text('${it['day']} | ${it['time']} ${it['note'].isNotEmpty ? '— ${it['note']}' : ''}', style: const TextStyle(fontSize: 11)),
+                            title: Text(it['subject'], style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5)),
+                            subtitle: Text('${it['day']} | ${it['time']} ${it['note'].isNotEmpty ? '— ${it['note']}' : ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                               onPressed: () async {
@@ -1940,7 +2293,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ),
               ),
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق', style: TextStyle(fontWeight: FontWeight.w800)))],
           ),
         ),
       ),
@@ -1996,7 +2349,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('🧮 آلة حاسبة الطلاب', style: TextStyle(color: Color(0xFFA5B4FC), fontWeight: FontWeight.bold)),
+                      const Text('🧮 آلة حاسبة الطلاب', style: TextStyle(color: Color(0xFFA5B4FC), fontWeight: FontWeight.w900)),
                       IconButton(icon: const Icon(Icons.close, color: Colors.redAccent), onPressed: () => Navigator.pop(ctx)),
                     ],
                   ),
@@ -2004,7 +2357,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(10)),
-                    child: Text(display, textAlign: TextAlign.left, style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 28, fontWeight: FontWeight.bold)),
+                    child: Text(display, textAlign: TextAlign.left, style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 28, fontWeight: FontWeight.w900)),
                   ),
                   const SizedBox(height: 10),
                   GridView.count(
@@ -2020,7 +2373,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       return ElevatedButton(
                         style: ElevatedButton.styleFrom(backgroundColor: bg, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                         onPressed: () => onBtn(b),
-                        child: Text(b, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        child: Text(b, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                       );
                     }).toList(),
                   ),
@@ -2049,11 +2402,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             textDirection: TextDirection.rtl,
             child: AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              title: const Text('⏱️ غرفة التركيز والمذاكرة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              title: const Text('⏱️ غرفة التركيز والمذاكرة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('نظام بومودورو: 25 دقيقة مذاكرة ثم 5 دقائق راحة.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  const Text('نظام بومودورو: 25 دقيقة مذاكرة ثم 5 دقائق راحة.', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
                   const SizedBox(height: 14),
                   Text('$m:$s', style: TextStyle(fontSize: 42, fontWeight: FontWeight.w900, color: _primaryColor)),
                   const SizedBox(height: 14),
@@ -2063,7 +2416,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                         child: ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(backgroundColor: running ? Colors.red : const Color(0xFF10B981), foregroundColor: Colors.white),
                           icon: Icon(running ? Icons.pause : Icons.play_arrow),
-                          label: Text(running ? 'إيقاف' : 'ابدأ التركيز'),
+                          label: Text(running ? 'إيقاف' : 'ابدأ التركيز', style: const TextStyle(fontWeight: FontWeight.w900)),
                           onPressed: () {
                             if (running) {
                               timer?.cancel();
@@ -2091,7 +2444,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                             secondsLeft = 25 * 60;
                           });
                         },
-                        child: const Text('إعادة'),
+                        child: const Text('إعادة', style: TextStyle(fontWeight: FontWeight.w800)),
                       ),
                     ],
                   ),
@@ -2103,7 +2456,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     timer?.cancel();
                     Navigator.pop(ctx);
                   },
-                  child: const Text('إغلاق'),
+                  child: const Text('إغلاق', style: TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ],
             ),
@@ -2126,7 +2479,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            title: const Text('🎯 قياس وتوقع نتيجة الدور الأول', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            title: const Text('🎯 قياس وتوقع نتيجة الدور الأول', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -2158,7 +2511,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                           }
                         });
                       },
-                      child: const Text('احسب واكتشف نتيجتك الآن', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text('احسب واكتشف نتيجتك الآن', style: TextStyle(fontWeight: FontWeight.w900)),
                     ),
                   ),
                   if (resTitle != null) ...[
@@ -2168,9 +2521,9 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
                       child: Column(
                         children: [
-                          Text(resTitle!, style: TextStyle(fontWeight: FontWeight.bold, color: resColor, fontSize: 13)),
+                          Text(resTitle!, style: TextStyle(fontWeight: FontWeight.w900, color: resColor, fontSize: 13)),
                           const SizedBox(height: 4),
-                          Text(resDesc!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5)),
+                          Text(resDesc!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
@@ -2178,7 +2531,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 ],
               ),
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق', style: TextStyle(fontWeight: FontWeight.w800)))],
           ),
         ),
       ),
@@ -2192,10 +2545,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         value: val,
         decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), isDense: true),
         items: const [
-          DropdownMenuItem(value: 5, child: Text('ممتاز (فوق 85%)', style: TextStyle(fontSize: 12))),
-          DropdownMenuItem(value: 4, child: Text('جيد جداً (75% - 85%)', style: TextStyle(fontSize: 12))),
-          DropdownMenuItem(value: 3, child: Text('جيد (60% - 74%)', style: TextStyle(fontSize: 12))),
-          DropdownMenuItem(value: 2, child: Text('مقبول / ضعيف', style: TextStyle(fontSize: 12))),
+          DropdownMenuItem(value: 5, child: Text('ممتاز (فوق 85%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+          DropdownMenuItem(value: 4, child: Text('جيد جداً (75% - 85%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+          DropdownMenuItem(value: 3, child: Text('جيد (60% - 74%)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+          DropdownMenuItem(value: 2, child: Text('مقبول / ضعيف', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
         ],
         onChanged: (v) => onChanged(v!),
       ),
@@ -2223,7 +2576,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
           textDirection: TextDirection.rtl,
           child: AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-            title: const Text('🔥 شحن طاقة وحماس المذاكرة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            title: const Text('🔥 شحن طاقة وحماس المذاكرة', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2232,10 +2585,10 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
-                  child: Text(currentQuote, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  child: Text(currentQuote, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
                 ),
                 const SizedBox(height: 8),
-                Text('عدد مرات شحن الحماس اليوم: $count مرة', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text('عدد مرات شحن الحماس اليوم: $count مرة', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey)),
                 const SizedBox(height: 10),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626), foregroundColor: Colors.white),
@@ -2244,11 +2597,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     await prefs.setInt('hamas_boost_count', count);
                     setModalState(() => currentQuote = quotes[Random().nextInt(quotes.length)]);
                   },
-                  child: const Text('أخذ جرعة حماس جديدة 💪', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text('أخذ جرعة حماس جديدة 💪', style: TextStyle(fontWeight: FontWeight.w900)),
                 ),
               ],
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق'))],
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق', style: TextStyle(fontWeight: FontWeight.w800)))],
           ),
         ),
       ),
@@ -2266,15 +2619,15 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
             children: [
               Icon(Icons.notifications_active_rounded, color: Color(0xFFF59E0B)),
               SizedBox(width: 6),
-              Text('إشعارات فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              Text('إشعارات فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                title: const Text('🎓 اختر مرحلتك الدراسية بسهولة', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                subtitle: const Text('اضغط لتحديد مرحلتك (الدبلومات، صفوف النقل، أو المعاهد والكليات).', style: TextStyle(fontSize: 11)),
+                title: const Text('🎓 اختر مرحلتك الدراسية بسهولة', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5)),
+                subtitle: const Text('اضغط لتحديد مرحلتك (الدبلومات، صفوف النقل، أو المعاهد والكليات).', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _showStageOnboardingDialog();
@@ -2282,8 +2635,8 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
               ),
               const Divider(),
               ListTile(
-                title: const Text('👨‍🏫 عرض المدرسين المعتمدين', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
-                subtitle: const Text('انشر شروحاتك ومذكراتك للطلاب على تطبيق فني برو مجاناً!', style: TextStyle(fontSize: 11)),
+                title: const Text('👨‍🏫 عرض المدرسين المعتمدين', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5)),
+                subtitle: const Text('انشر شروحاتك ومذكراتك للطلاب على تطبيق فني برو مجاناً!', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                 onTap: () {
                   Navigator.pop(ctx);
                   _incrementAndOpen('view_teacher_join_v2', 1500, 'المدرس المعتمد', '$kMainBlogUrl/search/label/المدرسين', requireTeacherConfirm: true);
@@ -2304,13 +2657,13 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
         textDirection: TextDirection.rtl,
         child: AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text('مشاركة تطبيق فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          title: const Text('مشاركة تطبيق فني برو', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
                 'شارك التطبيق مع زمايلك في الدبلوم أو المعهد عشان الكل يستفيد من المذكرات والأدوات الهندسية 🎓',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -2318,7 +2671,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(backgroundColor: _primaryColor, foregroundColor: Colors.white),
                   icon: const Icon(Icons.copy_rounded),
-                  label: const Text('نسخ رسالة ورابط التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: const Text('نسخ رسالة ورابط التطبيق', style: TextStyle(fontWeight: FontWeight.w900)),
                   onPressed: () {
                     Clipboard.setData(const ClipboardData(text: shareText));
                     Navigator.pop(ctx);
@@ -2463,7 +2816,7 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
                           ),
                           Text(
                             widget.title,
-                            style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 10.5, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 10.5, fontWeight: FontWeight.w800),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
@@ -2504,7 +2857,7 @@ class _BlogWebViewScreenState extends State<BlogWebViewScreen> {
                               const SizedBox(height: 12),
                               Text(
                                 'جاري فتح ${widget.title}...',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: widget.primaryDarkColor),
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: widget.primaryDarkColor),
                               ),
                             ],
                           ),
@@ -2588,7 +2941,7 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF1F2937),
           foregroundColor: Colors.white,
-          title: const Text('كشكول السلك الذكي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          title: const Text('كشكول السلك الذكي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
           actions: [
             IconButton(
               icon: Icon(Icons.keyboard_rounded, color: !_isDrawMode ? const Color(0xFF38BDF8) : Colors.white70),
@@ -2686,7 +3039,7 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                               maxLines: null,
                               expands: true,
                               onChanged: (_) => _savePage(),
-                              style: const TextStyle(fontSize: 15, height: 2.13, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                              style: const TextStyle(fontSize: 15, height: 2.13, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
                               decoration: const InputDecoration(
                                 border: InputBorder.none,
                                 hintText: 'اكتب ملخصاتك وملاحظاتك هنا... يتم الحفظ تلقائياً',
@@ -2734,9 +3087,9 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_right),
-                    label: const Text('السابقة'),
+                    label: const Text('السابقة', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),
-                  Text('ورقة $_pageIndex من 10', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Text('ورقة $_pageIndex من 10', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
                   ElevatedButton.icon(
                     onPressed: _pageIndex < 10
                         ? () async {
@@ -2746,7 +3099,7 @@ class _SpiralNotebookScreenState extends State<SpiralNotebookScreen> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_left),
-                    label: const Text('التالية'),
+                    label: const Text('التالية', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),
                 ],
               ),
@@ -2862,7 +3215,7 @@ class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF1F2937),
           foregroundColor: Colors.white,
-          title: const Text('لوحة الرسم الهندسي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          title: const Text('لوحة الرسم الهندسي', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
           actions: [
             _toolBtn(Icons.edit_rounded, _EngShapeType.free),
             _toolBtn(Icons.horizontal_rule_rounded, _EngShapeType.line),
@@ -2960,7 +3313,7 @@ class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
                         ),
                         child: const Text(
                           'كراسة الرسم الهندسي - مقياس 1:1 | فني برو 2027',
-                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: Color(0xFF0369A1)),
                         ),
                       ),
                     ),
@@ -2983,9 +3336,9 @@ class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_right),
-                    label: const Text('السابقة'),
+                    label: const Text('السابقة', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),
-                  Text('لوحة هندسية $_sheetIndex من 5', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold)),
+                  Text('لوحة هندسية $_sheetIndex من 5', style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.w900)),
                   ElevatedButton.icon(
                     onPressed: _sheetIndex < 5
                         ? () async {
@@ -2995,7 +3348,7 @@ class _EngineeringPadScreenState extends State<EngineeringPadScreen> {
                           }
                         : null,
                     icon: const Icon(Icons.chevron_left),
-                    label: const Text('التالية'),
+                    label: const Text('التالية', style: TextStyle(fontWeight: FontWeight.w800)),
                   ),
                 ],
               ),
